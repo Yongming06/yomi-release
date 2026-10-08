@@ -1,0 +1,164 @@
+From 36d14d0f386c9b8a5149f9d4a85513f4b7d47420 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 22:43:58 +0800
+Subject: [PATCH 37/37] =?UTF-8?q?chore:=20=E5=BD=92=E4=B8=80=E5=8C=96?=
+ =?UTF-8?q?=E4=B8=A4=E4=B8=AA=E5=BC=95=E6=93=8E=E6=96=87=E4=BB=B6=E7=9A=84?=
+ =?UTF-8?q?=20CRLF=E2=86=92LF=EF=BC=88=E6=B6=88=E9=99=A4=202.5=20=E4=B8=87?=
+ =?UTF-8?q?=E8=A1=8C=E5=81=87=E5=B7=AE=E5=BC=82=EF=BC=89+=20=E8=BF=90?=
+ =?UTF-8?q?=E8=A1=8C=E4=BA=A7=E7=89=A9=E5=85=A5=20.gitignore=EF=BC=88?=
+ =?UTF-8?q?=E6=8A=A5=E5=91=8A/=E6=97=A5=E5=BF=97=E4=BF=9D=E7=95=99?=
+ =?UTF-8?q?=E5=9C=A8=E7=A3=81=E7=9B=98=EF=BC=89+=20=E5=88=A0=E9=99=A4?=
+ =?UTF-8?q?=E6=AE=8B=E7=95=99=E6=8E=A2=E9=92=88=E6=96=87=E4=BB=B6?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .gitignore                      | 58 ++++++++++++++++++---------------
+ apps/core/_yomi_auto_report.txt | 23 -------------
+ apps/core/_yomi_errors.log      | 31 ------------------
+ apps/core/_yomi_probe.txt       |  1 -
+ 4 files changed, 31 insertions(+), 82 deletions(-)
+ delete mode 100644 apps/core/_yomi_auto_report.txt
+ delete mode 100644 apps/core/_yomi_errors.log
+ delete mode 100644 apps/core/_yomi_probe.txt
+
+diff --git a/.gitignore b/.gitignore
+index c1dccdc..ad907b8 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,29 +1,33 @@
+-dist
+-output
+-node_modules
+-package-lock.json
+-
+-# IDE
+-.idea/
+-.vscode/
+-
+-# macOS
+-._*
+-.Spotlight-V100
+-.Trashes
+-.DS_Store
+-.DS_Store?
+-
+-# Windows
+-ehthumbs.db
+-Thumbs.db
+-
+-# Skill for private use
+-.agents/skills/*-selfuse
++dist
++output
++node_modules
++package-lock.json
++
++# IDE
++.idea/
++.vscode/
++
++# macOS
++._*
++.Spotlight-V100
++.Trashes
++.DS_Store
++.DS_Store?
++
++# Windows
++ehthumbs.db
++Thumbs.db
++
++# Skill for private use
++.agents/skills/*-selfuse
+ 
+ # 本项目自制内容整理：Electron 缓存（130MB，与代码无关）
+-.electron-cache/
+-
+-# 隧道 token（敏感，绝不入库）
+-.cloudflare-tunnel-token
+-*.tunnel-token
++.electron-cache/
++
++# 隧道 token（敏感，绝不入库）
++.cloudflare-tunnel-token
++*.tunnel-token
++
++# 开发期运行产物（自动对局回归的输出，保留在磁盘但不入库）
++apps/core/_yomi_errors.log
++apps/core/_yomi_auto_report.txt
+diff --git a/apps/core/_yomi_auto_report.txt b/apps/core/_yomi_auto_report.txt
+deleted file mode 100644
+index 2c47355..0000000
+--- a/apps/core/_yomi_auto_report.txt
++++ /dev/null
+@@ -1,23 +0,0 @@
+-
+-
+-===== AUTO MATCH START 2026-10-08T13:59:55.605Z target 20 matches =====
+-  [环境] url=http://127.0.0.1:8081/ 引擎就绪=false 武将库=0 含yomi的包=
+-  [环境] characterPack 全部键=
+-  [批次] total=20 done=0 本页 2026-10-08T13:59:55.645Z
+-  [批次] 开局 mode=identity hero=(随机) 武将库=0
+-  [批次] total=20 done=0 本页 2026-10-08T14:00:05.002Z
+-  [进局] 存活=8 auto=true 事件=chooseButton:0<-chooseCharacter:0<-game:4<-?:?
+-    · 心跳 30s 存活=4 auto=true over=false imchoosing=false 事件=gain:4<-draw:0<-phaseDraw:2<-phase:9<-phaseLoop:0
+-    · 心跳 60s 存活=3 auto=true over=false imchoosing=false 事件=gain:4<-draw:0<-rewangzun:0<-trigger:0<-arrangeTrigger:0
+-第 1/20 局：✅ over 用时 69s 新增报错行 0 存活 1 武将：曹操
+-  [下一局] 开局 mode=identity hero=星野（临战）攻击 武将库=25
+-  [批次] total=20 done=1 本页 2026-10-08T14:01:17.636Z
+-  [进局] 存活=8 auto=true 事件=useSkill:4<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
+-第 2/20 局：✅ over 用时 17s 新增报错行 0 存活 3 武将：星野 / 夏侯惇 / 爱丽丝（临战）
+-  [下一局] 开局 mode=identity hero=星野（临战）防御 武将库=25
+-  [批次] total=20 done=2 本页 2026-10-08T14:01:37.492Z
+-  [进局] 存活=8 auto=true 事件=chooseTarget:0<-yomi_ba_qianpai2:0<-trigger:0<-arrangeTrigger:0<-game:5
+-第 3/20 局：✅ over 用时 21s 新增报错行 0 存活 4 武将：星野（临战）防御 / 甘宁 / 日奈（泳装） / 爱丽丝（女仆）
+-  [下一局] 开局 mode=identity hero=梓 武将库=25
+-  [批次] total=20 done=3 本页 2026-10-08T14:02:01.808Z
+-  [进局] 存活=8 auto=true 事件=phase:9<-phaseLoop:0<-game:7<-?:?
+diff --git a/apps/core/_yomi_errors.log b/apps/core/_yomi_errors.log
+deleted file mode 100644
+index 657c9db..0000000
+--- a/apps/core/_yomi_errors.log
++++ /dev/null
+@@ -1,31 +0,0 @@
+-
+-
+-===== 2026-10-08T14:02:13.232Z =====
+-【unhandledrejection】evt.getParent is not a function
+- 栈: TypeError: evt.getParent is not a function
+-    at nearestTargetsEvent (http://127.0.0.1:8081/character/yomi_char_ba/skill.js?t=1791457122236:1625:13)
+-    at Object.filter (http://127.0.0.1:8081/character/yomi_char_ba/skill.js?t=1791457122236:1671:17)
+-    at Object.filterTrigger (http://127.0.0.1:8081/noname/library/index.js:11101:29)
+-    at http://127.0.0.1:8081/noname/library/element/content.ts:3498:79
+-    at Array.filter (<anonymous>)
+-    at GameEvent.arrangeTrigger (http://127.0.0.1:8081/noname/library/element/content.ts:3498:51)
+-    at GameEvent.content (http://127.0.0.1:8081/noname/library/element/GameEvent/compilers/ArrayCompiler.ts:26:34)
+-    at GameEvent.loop (http://127.0.0.1:8081/noname/library/element/gameEvent.ts:228:27)
+-    at async http://127.0.0.1:8081/noname/library/element/gameEvent.ts:202:7
+-    at async http://127.0.0.1:8081/noname/library/element/gameEvent.ts:287:9
+-当时事件链: (无 _status.event)
+-
+-===== 2026-10-08T14:02:13.644Z =====
+-【unhandledrejection】evt.getParent is not a function
+- 栈: TypeError: evt.getParent is not a function
+-    at nearestTargetsEvent (http://127.0.0.1:8081/character/yomi_char_ba/skill.js?t=1791457122236:1625:13)
+-    at Object.filter (http://127.0.0.1:8081/character/yomi_char_ba/skill.js?t=1791457122236:1671:17)
+-    at Object.filterTrigger (http://127.0.0.1:8081/noname/library/index.js:11101:29)
+-    at http://127.0.0.1:8081/noname/library/element/content.ts:3498:79
+-    at Array.filter (<anonymous>)
+-    at GameEvent.arrangeTrigger (http://127.0.0.1:8081/noname/library/element/content.ts:3498:51)
+-    at GameEvent.content (http://127.0.0.1:8081/noname/library/element/GameEvent/compilers/ArrayCompiler.ts:26:34)
+-    at GameEvent.loop (http://127.0.0.1:8081/noname/library/element/gameEvent.ts:228:27)
+-    at async http://127.0.0.1:8081/noname/library/element/gameEvent.ts:202:7
+-    at async http://127.0.0.1:8081/noname/library/element/gameEvent.ts:287:9
+-当时事件链: (无 _status.event)
+diff --git a/apps/core/_yomi_probe.txt b/apps/core/_yomi_probe.txt
+deleted file mode 100644
+index 67b8848..0000000
+--- a/apps/core/_yomi_probe.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-yomi-probe-ok
+\ No newline at end of file

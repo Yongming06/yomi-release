@@ -1,0 +1,30 @@
+From 9852e522b9772f02a7c3abd4f60d14804422e121 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Wed, 7 Oct 2026 21:59:22 +0800
+Subject: [PATCH 12/37] =?UTF-8?q?fix(deploy):=20.bat=20=E5=BC=BA=E5=88=B6?=
+ =?UTF-8?q?=20TUNNEL=5FEDGE=5FIP=5FVERSION=3D6=EF=BC=88=E5=AE=9E=E6=B5=8B?=
+ =?UTF-8?q?=20IPv6=20=E5=88=B0=E9=9A=A7=E9=81=93=E8=BE=B9=E7=BC=98=2030ms?=
+ =?UTF-8?q?=20vs=20IPv4=20342ms=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ deploy/cloudflared-http2.bat | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/deploy/cloudflared-http2.bat b/deploy/cloudflared-http2.bat
+index 492a445..9135d2c 100644
+--- a/deploy/cloudflared-http2.bat
++++ b/deploy/cloudflared-http2.bat
+@@ -20,6 +20,10 @@ rem ============================================================================
+ chcp 65001 >nul
+ setlocal
+ set "EXE=C:\Program Files (x86)\cloudflared\cloudflared.exe"
++rem Force IPv6 to the Cloudflare tunnel edge: measured 2026-10-07, IPv4 lands on
++rem Los Angeles (285-342 ms RTT, ~1-2 KB/s) while IPv6 reaches a nearby edge (30 ms).
++rem This overrides the machine-level TUNNEL_EDGE_IP_VERSION for this process only.
++set "TUNNEL_EDGE_IP_VERSION=6"
+ set "LOG=%~dp0..\..\_worklog\cloudflared-http2.log"
+ set "TOKEN=%CLOUDFLARED_TUNNEL_TOKEN%"
+ if not defined TOKEN if exist "%~dp0..\..\.cloudflare-tunnel-token" set /p TOKEN=<"%~dp0..\..\.cloudflare-tunnel-token"

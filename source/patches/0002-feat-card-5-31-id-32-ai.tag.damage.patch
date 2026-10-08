@@ -1,0 +1,3142 @@
+From 042b0f566ba039b3450e6f2013759a96e8a6550d Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Tue, 6 Oct 2026 20:17:06 +0800
+Subject: [PATCH 02/37] =?UTF-8?q?feat(card):=20=E8=87=AA=E5=88=B6=E5=8D=A1?=
+ =?UTF-8?q?=E7=89=8C=E5=8C=85=205=20=E5=8C=85=EF=BC=8831=20=E5=8D=A1=20id?=
+ =?UTF-8?q?=20/=2032=20=E5=AE=9E=E4=BD=93=E7=89=8C=EF=BC=8C=E5=90=AB?=
+ =?UTF-8?q?=E5=A5=A5=E7=A7=98=C2=B7=E5=BA=94=E5=AF=B9=E5=AD=90=E7=B3=BB?=
+ =?UTF-8?q?=E7=BB=9F=20+=20=E8=87=AA=E5=88=B6=E4=BC=A4=E5=AE=B3=E7=89=8C?=
+ =?UTF-8?q?=20ai.tag.damage=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/card/yomi_pack_core.js      |  975 +++++++++++++++
+ apps/core/card/yomi_pack_crossover.js |  173 +++
+ apps/core/card/yomi_pack_meme.js      |   69 ++
+ apps/core/card/yomi_pack_reactive.js  | 1567 +++++++++++++++++++++++++
+ apps/core/card/yomi_pack_sanguo.js    |  302 +++++
+ 5 files changed, 3086 insertions(+)
+ create mode 100644 apps/core/card/yomi_pack_core.js
+ create mode 100644 apps/core/card/yomi_pack_crossover.js
+ create mode 100644 apps/core/card/yomi_pack_meme.js
+ create mode 100644 apps/core/card/yomi_pack_reactive.js
+ create mode 100644 apps/core/card/yomi_pack_sanguo.js
+
+diff --git a/apps/core/card/yomi_pack_core.js b/apps/core/card/yomi_pack_core.js
+new file mode 100644
+index 0000000..0f9caa4
+--- /dev/null
++++ b/apps/core/card/yomi_pack_core.js
+@@ -0,0 +1,975 @@
++// @ts-nocheck
++/**
++ * 自制游戏卡 · 主题包 5「原创核心·无色牌池」（包名 `yomi_pack_core`，56 张归属 16 张）
++ *
++ * 结构依据：`卡牌实现方案.md` §一、§七（勾选 / 单卡禁用）、§八（分包方案）。
++ * 加载链路与「能看到 / 能勾选 / 能单卡禁用」的三项硬条件同 `yomi_pack_sanguo.js` 头部说明：
++ *   ① `export const type = "card"` + `export default {...}`；
++ *   ② 每张卡的 `translate[<卡id>_info]` 必须在（`init/loading.ts:17`，缺则该卡不进 `lib.cardPack`，界面看不到也无法禁用）；
++ *   ③ `list` 正常填写 `[花色, 点数, 卡id]`（`init/loading.ts:40`、`:57`）。
++ * 包名不带 `mode_` 前缀（`cardPackMenu.js:270-272`，否则失去单卡禁用能力）。
++ *
++ * 卡包可以带 `skill` 段（`init/loading.ts:74-99` 的 `default` 分支会写进 `lib.skill` / `lib.translate`），
++ * 本包用它承载：装备牌技能（隼鳞 / 光刃）、各类临时增益载体（泥浆铠甲 / 当头棒喝 / 贪婪 / 伪造账单）。
++ *
++ * 花色点数依据：本包无色卡按「花色点数轮转发放」规则发放实体花色与点数 ——
++ *    规则与游标状态见工作区根目录 `花色点数分配记录.md`（全局第 5、6、8、10、13、14、15、16、17、18、19 位）。
++ *    本包不再使用引擎的 `"none"` 无色。
++ *
++ * 本包内容（累计 15 张）：
++ *   A 档（第一批）：
++ *   - `yomi_mingsha_xianjing` 鸣沙陷阱 CSV id=34；`yomi_nijiang_kaijia` 泥浆铠甲 CSV id=35；`yomi_huoyunche` 火云车 CSV id=40；
++ *   B 档（第二批，本批新增）：
++ *   - `yomi_huanhunxianyao`   还魂仙药   CSV id=1（重铸 + 体力上限复原）
++ *   - `yomi_huixing`          彗星       CSV id=2 与 id=54（同 id 两张实体牌，list 各一条）
++ *   - `yomi_kuangzhanshizhihun` 狂战士之魂 CSV id=3（摸牌链式伤害）
++ *   - `yomi_huanma_fengbo`    换马风波   CSV id=23（全场坐骑重铸）
++ *   - `yomi_fengyin`          风隐       CSV id=26（跳过双方下个回合）
++ *   - `yomi_bianfu`           蝙蝠       CSV id=36（吸血伤害）
++ *   - `yomi_tanlan`           贪婪       CSV id=37（本回合牌均吸血）
++ *   - `yomi_weizao_zhangdan`  伪造账单   CSV id=39（回复改为流失）⚠️ 见卡内注释的实现偏差
++ *   - `yomi_sunlin`           隼鳞       CSV id=41（防具：伤害类型记录）
++ *   - `yomi_guangren`         光刃       CSV id=42（武器：每回合首张属性伤害 +1）
++ *   - `yomi_shengri_danggao`  生日蛋糕   CSV id=46（判定区操作）
++ *
++ * ⚠️ 本批含若干**实现偏差**（引擎无对应机制或需事件改写），均已在对应卡片的注释中用 ⚠️ 标出，
++ *    并在 `PROJECT_REPORT.md` 的「已知问题 / 待办」中登记，待实机验证后再精修。
++ *
++ * 命名依据：`名称登记表.md`（一律 `yomi_` 前缀）。本包显示名与本体均不重名，不加「（改）」。
++ */
++import { lib, game, ui, get, ai, _status } from "noname";
++
++export const type = "card";
++
++/** 隼鳞：读取记录在**装备牌实例**上的伤害类型（卸装即失效） */
++function sunlinRecorded(player) {
++	const equip = player.getEquip("yomi_sunlin");
++	return equip && equip.storage ? equip.storage.yomi_sunlin_type : null;
++}
++
++/** 隼鳞：判定一次伤害事件的「类型」—— 基本 / 锦囊 / 技能 / 其它 */
++function damageKind(event) {
++	if (event.card) {
++		const cardType = get.type(event.card);
++		if (cardType === "basic") {
++			return "basic";
++		}
++		if (cardType === "trick" || cardType === "delay") {
++			return "trick";
++		}
++		return "other";
++	}
++	if (event.skill) {
++		return "skill";
++	}
++	return "other";
++}
++
++export default {
++	name: "yomi_pack_core",
++
++	card: {
++		// 还魂仙药：CSV id=1。「重铸。若你的当前体力上限低于武将初始体力上限，则使其变回初始体力上限。」
++		// ⚠️ 实现偏差：引擎的「重铸」只做「弃置该牌 + 摸一张牌」，**不经过 content**，
++		//     因此本实现让它同时可以正常使用（出牌阶段对自己使用）来触发上限复原效果。
++		yomi_huanhunxianyao: {
++			type: "trick",
++			enable: true,
++			recastable: true, // 可在手牌区重铸（library/index.js:10969）
++			toself: true,
++			selectTarget: -1,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			async content(event, trigger, player) {
++				// 初始体力上限 = 该武将定义里的第 3 项（lib.character[name][2]）
++				const name = player.name1 || player.name;
++				const info = lib.character[name];
++				const initHp = info ? info[2] : player.maxHp;
++				if (typeof initHp === "number" && player.maxHp < initHp) {
++					await player.gainMaxHp(initHp - player.maxHp);
++				}
++			},
++		},
++
++		// 彗星：CSV id=2（与 id=54 同效果、同 id，两张实体牌）。「使你的体力流失至0，对一名其它角色造成
++		// 等同于流失值+1点伤害，其可弃置若干张牌，每弃置两张抵消1点伤害。（伤害上限为5）」
++		yomi_huixing: {
++			type: "trick",
++			enable: true,
++			selectTarget: 1,
++			filterTarget: lib.filter.notMe,
++			async content(event, trigger, player) {
++				const target = event.target;
++				const lose = player.hp; // 流失值 = 当前体力（把体力流失至 0）
++				// 卡面：「本牌造成濒死时，优先结算对方的濒死」——
++				// 做法：先用 player.nodying 压住**自己**的濒死结算（引擎的 dying 流程会检查该标记，
++				// 见 content.ts:12450），让自己的体力归零但不立刻进入濒死；接着正常对目标造成伤害
++				// （目标若濒死，按引擎默认流程结算）；最后再补触发自己的濒死。
++				if (lose > 0) {
++					player.nodying = true;
++					await player.loseHp(lose);
++					delete player.nodying;
++				}
++				let num = Math.min(5, lose + 1);
++				// 目标可弃置若干张牌，每两张抵消 1 点
++				while (num > 0 && target.countCards("he") >= 2) {
++					const result = await target
++						.chooseToDiscard({
++							position: "he",
++							selectCard: [2, 2],
++							prompt: `彗星：弃置2张牌以抵消1点伤害（剩余${num}点，可取消）`,
++						})
++						.forResult();
++					if (!result.bool) {
++						break;
++					}
++					num--;
++				}
++				if (num > 0) {
++					await target.damage(num, player);
++				}
++				// 对方的濒死已经结算完毕，这时才轮到自己进入濒死
++				if (player.hp <= 0 && player.isAlive() && !player.isOut()) {
++					await player.dying();
++				}
++			},
++			ai: {
++				tag: { damage: 1 },
++				result: {
++					// AI：本牌代价极高（自己体力流失至 0），只在「打得死对方、且自己大概率救得回来」时才用。
++					target(player, target) {
++						if (get.damageEffect(target, player, player) <= 0) {
++							return -1;
++						}
++						const damage = Math.min(5, player.hp + 1);
++						// 打不死就别拿命去换
++						if (damage < target.hp + (target.hujia || 0)) {
++							return -1;
++						}
++						// 自己血太少、手上又没【桃】时不冒险
++						const hasTao = player.countCards("h", card => get.name(card) === "tao") > 0;
++						if (player.hp <= 1 && !hasTao) {
++							return -1;
++						}
++						return 1;
++					},
++				},
++			},
++		},
++
++		// 狂战士之魂：CSV id=3。「摸一张牌并选择一个目标，若摸到的牌为黑色，弃置其并对目标造成1点伤害，
++		// 重复此操作。那之后，你弃一张牌。」
++		// 注：原牌面还有「此过程中，摸牌相关技能改为摸完所有牌后结算」一句 ——
++		// 用户已确认**线上不需要**这条限制（它只是线下与技能互动难以结算时的权宜），故不实现。
++		yomi_kuangzhanshizhihun: {
++			type: "trick",
++			enable: true,
++			selectTarget: 1,
++			filterTarget: lib.filter.notMe,
++			async content(event, trigger, player) {
++				const target = event.target;
++				// 循环：摸 1 张 → 黑色则弃置并造成 1 点伤害 → 回到开头继续摸；直到摸到非黑色为止。
++				// 取牌用 `await next; next.cards`（本体标准写法，见 clan/skill.js:5601、sp2/skill.js:16360），
++				// 比 `.forResult()` 更直接，避免个别引擎分支下取不到 cards 而提前跳出循环。
++				// guard 只是防御性上限，防止极端情况下的无限循环（正常最多几十次）。
++				let guard = 0;
++				while (guard++ < 60) {
++					const next = player.draw(1);
++					await next;
++					// ★ 取「摸到的牌」必须读 `event.result.cards` —— `draw` 的 content 把结果写在这里
++					//   （`content.ts:10897` `event.result = { bool: true, cards }`）。
++					//   `event.cards` 恒为 undefined → 之前写 `next.cards` 导致 cards 永远为空、直接 break，
++					//   于是「即使摸出黑牌也无法造成伤害」。
++					const cards = (next.result && next.result.cards) || next.cards || [];
++					if (!cards.length) {
++						break;
++					}
++					const card = cards[0];
++					const isBlack = get.color(card) === "black";
++					game.log(player, "狂战士之魂：摸到", card, isBlack ? "（黑色，继续）" : "（非黑色，停止）");
++					if (!isBlack) {
++						break;
++					}
++					await player.discard(cards);
++					await target.damage(1, player);
++				}
++				// 所有重复结束之后，你弃一张牌
++				if (player.countCards("he") > 0) {
++					await player
++						.chooseToDiscard({
++							position: "he",
++							selectCard: [1, 1],
++							forced: true,
++							prompt: "狂战士之魂：弃置1张牌",
++						})
++						.forResult();
++				}
++			},
++			ai: {
++				tag: { damage: 1 },
++				result: {
++					// AI：这是「弃牌换伤害」的牌，只对敌方角色使用
++					target(player, target) {
++						return get.damageEffect(target, player, player);
++					},
++				},
++			},
++		},
++
++		// 换马风波：CSV id=23。「重铸。为场上所有角色将其坐骑重铸。」
++		// 重铸语义 = 弃置该牌并摸一张，故对每匹坐骑执行「弃置 + 摸一」。
++		yomi_huanma_fengbo: {
++			type: "trick",
++			enable: true,
++			recastable: true,
++			notarget: true,
++			async content(event, trigger, player) {
++				for (const target of game.filterPlayer()) {
++					const horses = target.getCards("e", card => {
++						const subtype = get.subtype(card);
++						return subtype === "equip3" || subtype === "equip4";
++					});
++					for (const horse of horses) {
++						await target.discard(horse);
++						await target.draw(1);
++					}
++				}
++			},
++		},
++
++		// 风隐：CSV id=26。「重铸。弃一张手牌，跳过你与一名其它角色的下一个回合。」
++		// ⚠️ 「跳过下一个回合」用 `player.skip("phase")` 实现（本体用法见 mode/versus.js:8345），
++		//     实际生效时机（在 phaseBegin 里 skip 是否来得及）**待实机验证**。
++		yomi_fengyin: {
++			type: "trick",
++			enable: true,
++			recastable: true,
++			selectTarget: 1,
++			filterTarget: lib.filter.notMe,
++			async content(event, trigger, player) {
++				const target = event.target;
++				// 代价：弃一张手牌
++				const discardResult = await player
++					.chooseToDiscard({
++						position: "h",
++						selectCard: [1, 1],
++						forced: true,
++						prompt: "风隐：弃置1张手牌",
++					})
++					.forResult();
++				if (!discardResult.bool) {
++					return;
++				}
++				// 你与该角色各挂一个「跳过下个回合」标记
++				player.addSkill("yomi_fengyin_skip");
++				target.addSkill("yomi_fengyin_skip");
++			},
++			ai: {
++				result: {
++					// AI：本牌会让「你与目标」都跳过下个回合，只对敌方角色使用才划算
++					target(player, target) {
++						return get.attitude(player, target) < 0 ? 1 : -1;
++					},
++				},
++			},
++		},
++
++		// 蝙蝠：CSV id=36。「吸血。弃一张牌，对一名其它角色造成1点伤害。其可打出一张【闪】以抵消此伤害。」
++		yomi_bianfu: {
++			type: "trick",
++			enable: true,
++			selectTarget: 1,
++			filterTarget: lib.filter.notMe,
++			async content(event, trigger, player) {
++				const target = event.target;
++				// 代价：弃一张牌
++				const discardResult = await player
++					.chooseToDiscard({
++						position: "he",
++						selectCard: [1, 1],
++						forced: true,
++						prompt: "蝙蝠：弃置1张牌",
++					})
++					.forResult();
++				if (!discardResult.bool) {
++					return;
++				}
++				// 目标可打出一张【闪】抵消
++				const next = target.chooseToRespond();
++				next.set("filterCard", (card, target2) => get.name(card) === "shan" && lib.filter.cardRespondable(card, target2));
++				next.set("prompt", "蝙蝠：请打出一张【闪】，否则受到1点伤害");
++				next.set("ai", card => (get.event().toRespond ? get.order(card) : -1));
++				next.set("toRespond", 1 >= target.hp + (player.hasSkillTag("jueqing", false, target) ? 0 : target.hujia) || get.damageEffect(target, player, target) < 0);
++				const result = await next.forResult();
++				if (!result.bool) {
++					// 吸血（本项目自定义关键词）：造成伤害后为你回复**等量**体力 ——
++					// 伤害因其他效果增减时，回复量随之变化（见《卡牌作业手册》「吸血」条）。
++					const damageEvent = target.damage(1, player);
++					await damageEvent;
++					await player.recover(damageEvent.num || 1);
++				}
++			},
++			ai: {
++				tag: { damage: 1 },
++				result: {
++					// AI：只对敌方角色使用（造成伤害 + 自己吸血，对敌人是负收益）
++					target(player, target) {
++						return get.damageEffect(target, player, player);
++					},
++				},
++			},
++		},
++
++		// 贪婪：CSV id=37。「在本回合中，使你之后使用的牌均具有吸血。」
++		yomi_tanlan: {
++			type: "trick",
++			enable: true,
++			toself: true,
++			selectTarget: -1,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			async content(event, trigger, player) {
++				player.addTempSkill("yomi_tanlan_buff", { player: "phaseJieshuBegin" });
++			},
++		},
++
++		// 伪造账单：CSV id=39。「有角色回复体力时可以使用，你弃等量张牌，以使其的回复改为流失。」
++		// 实现：**完全响应式** —— 这张牌不能在出牌阶段主动使用（enable: false），
++		// 而是由一个**全局观察者技能** `yomi_weizao_zhangdan_watch` 在「有角色回复体力时」
++		// 检查持有者手牌并给出使用机会（思路参照【无懈可击】standard.js:3096 的响应窗口）。
++		// 使用效果：弃置与该角色回复量**等量**的牌 → 撤销这次回复 → 令其流失等量体力。
++		// 注：该观察者技能在**文件末尾**被注册进 lib.skill.global（卡包 skill 段不会自动加入全局）。
++		yomi_weizao_zhangdan: {
++			type: "trick",
++			enable: false, // 只能通过观察者技能在「有角色回复体力时」触发，不能主动使用
++			async content(event, trigger, player) {
++				// 真正的效果在观察者技能里；这里留空以作保险
++				return;
++			},
++		},
++
++		// 隼鳞：CSV id=41。防具。「你装备此牌后造成的第一次伤害类型会被记录（基本、锦囊、技能、其它）。
++		// · 你受到的与记录相同的伤害类型伤害翻倍。· 你受到的与记录不同的伤害类型伤害减半（向下取整）。无记录时上述效果不生效。」
++		yomi_sunlin: {
++			type: "equip",
++			subtype: "equip2",
++			skills: ["yomi_sunlin_skill"],
++		},
++
++		// 光刃：CSV id=42。武器，攻击范围 4。「每个回合你使用的第一张属性伤害牌伤害+1。」
++		yomi_guangren: {
++			type: "equip",
++			subtype: "equip1",
++			distance: { attackFrom: -3 }, // 攻击范围 4 → -(4-1) = -3
++			skills: ["yomi_guangren_skill"],
++		},
++
++		// 生日蛋糕：CSV id=46。「准备阶段，弃一张其它手牌才能使用本牌。选择你判定区内的任意张牌，将其弃置。
++		// 再选择你判定区内的任意张牌，使其立即额外进行一次判定，本判定不会使其弃置。」
++		// 实现要点：
++		//  · 使用时机限定「你自己的准备阶段」（enable 里向上查找 phaseZhunbei 父事件）；
++		//  · 「额外判定」复刻该延时锦囊**自身**的判定成功/失败效果：参照引擎 phaseJudge 的做法
++		//    （content.ts:4931-4990）—— 先 `player.judge(card)` 得出结果，再创建同名事件并
++		//    `setContent(lib.card[cardName].effect)`、把 `_result` 传进去；
++		//  · 与引擎的唯一区别：**不调用 player.lose(card)**，所以这张牌仍留在判定区（卡面要求）。
++		//    例：额外判定【乐不思蜀】生效 → 立即跳过出牌阶段；随后它的正常判定照常进行，
++		//    若正常判定没生效，也不影响已被额外判定跳过的那一次。
++		yomi_shengri_danggao: {
++			type: "trick",
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			// ★「只能在准备阶段使用」的实现：引擎**只在出牌阶段提供用牌窗口**，准备阶段没有入口，
++			//   所以这里 `enable: false` 禁止主动使用；改由全局技能 `yomi_shengri_danggao_use`
++			//   在你的准备阶段开始时**主动询问**是否使用这张牌（方案与「奥秘」一致）。
++			enable: false,
++			async content(event, trigger, player) {
++				// 代价：弃一张其它手牌
++				const discardResult = await player
++					.chooseToDiscard({
++						position: "h",
++						selectCard: [1, 1],
++						forced: true,
++						prompt: "生日蛋糕：弃置1张其它手牌",
++					})
++					.forResult();
++				if (!discardResult.bool) {
++					return;
++				}
++				const judges = player.getCards("j");
++				if (!judges.length) {
++					return;
++				}
++				// 第一步：选择任意张判定区的牌弃置
++				const discardCards = await player
++					.chooseCardButton(judges, "生日蛋糕：选择要弃置的判定牌（可取消）", [0, judges.length])
++					.forResult();
++				if (discardCards.bool && discardCards.links && discardCards.links.length) {
++					await player.discard(discardCards.links);
++				}
++				// 第二步：再选任意张判定区的牌，使其立即额外判定一次（牌不会因此离开判定区）
++				const rest = player.getCards("j");
++				if (!rest.length) {
++					return;
++				}
++				const judgeCards = await player
++					.chooseCardButton(rest, "生日蛋糕：选择要立即额外判定的牌（可取消）", [0, rest.length])
++					.forResult();
++				if (!judgeCards.bool || !judgeCards.links || !judgeCards.links.length) {
++					return;
++				}
++				for (const card of judgeCards.links) {
++					const cardName = card.name;
++					const cardInfo = lib.card[cardName];
++					if (!cardInfo || !cardInfo.effect) {
++						continue;
++					}
++					game.log(player, "对", card, "进行了一次额外判定");
++					// ① 判定：与引擎 phaseJudge 一致
++					let result;
++					if (cardInfo.judge) {
++						result = await player.judge(card).set("type", "phase").forResult();
++					} else {
++						result = { bool: false };
++					}
++					// ② 复刻该牌判定成功/失败的后续效果
++					const next = game.createEvent(cardName);
++					next.setContent(cardInfo.effect);
++					next._result = result;
++					next.card = card;
++					next.cards = [card];
++					next.player = player;
++					await next;
++					// ③ 不调用 player.lose(card)：这张牌仍然留在判定区
++				}
++			},
++		},
++
++		// 鸣沙陷阱：CSV id=34。限「你攻击范围内的一名其它角色」；X = 体力上限 × 1/4（向上取整）+ 护甲值；
++		// 其可用任意张【杀】或【闪】响应，每张抵消 1 点。
++		yomi_mingsha_xianjing: {
++			ai: { tag: { damage: 1 } },
++			type: "trick",
++			enable: true,
++			selectTarget: 1,
++			filterTarget(card, player, target) {
++				// 卡面限定：「你攻击范围内的一名其它角色」——不再用不加范围限制的 lib.filter.notMe
++				return target !== player && player.inRange(target);
++			},
++			async content(event, trigger, player) {
++				const target = event.target;
++				// X 在结算时计算：体力上限的四分之一（向上取整）＋ 使用者当前护甲值。
++				let num = Math.ceil(player.maxHp * 0.25 + player.hujia);
++				if (num <= 0) {
++					return;
++				}
++				// 卡面：其可用**任意张**【杀】或【闪】打出以响应，**每张抵消 1 点伤害**。
++				// 故逐张询问：每成功打出 1 张就扣掉 1 点；随时可停（chooseToRespond 可取消）。
++				// chooseToRespond 写法仿本体【南蛮入侵】（standard.js:1325-1330）。
++				while (num > 0) {
++					const next = target.chooseToRespond();
++					next.set("filterCard", (card, target2) => {
++						const name = get.name(card);
++						return (name === "sha" || name === "shan") && lib.filter.cardRespondable(card, target2);
++					});
++					next.set("prompt", `鸣沙陷阱：请打出一张【杀】或【闪】抵消1点伤害（剩余${num}点，可随时停止）`);
++					next.set("ai", card => (get.event().toRespond ? get.order(card) : -1));
++					next.set("toRespond", num >= target.hp + (player.hasSkillTag("jueqing", false, target) ? 0 : target.hujia) || get.damageEffect(target, player, target) < 0);
++					const result = await next.forResult();
++					if (!result.bool) {
++						break;
++					}
++					num--;
++				}
++				// 剩余未被抵消的伤害一次性结算
++				if (num > 0) {
++					await target.damage(num, player);
++				}
++			},
++		},
++
++		// 泥浆铠甲：CSV id=35。弃 1 张牌，获得 1 点护甲（上限 5），本回合下一张【杀】伤害 +1；
++		// 第二段：本回合中你的伤害牌被响应而未造成伤害时，额外 +1 护甲与伤害 +1（由 sub 子技能观察）。
++		yomi_nijiang_kaijia: {
++			type: "trick",
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			// 卡级 enable：没有牌可弃时不可使用（本体【桃】同款写法，standard.js:577-579）
++			enable(card, player) {
++				return player.countCards("he") > 0;
++			},
++			async content(event, trigger, player) {
++				// 代价：弃置一张牌（不可取消，故在 enable 里先保证有牌可弃）
++				const discardResult = await player
++					.chooseToDiscard({
++						position: "he",
++						selectCard: [1, 1],
++						forced: true,
++						prompt: "泥浆铠甲：请弃置1张牌",
++					})
++					.forResult();
++				if (!discardResult.bool) {
++					return;
++				}
++				// 卡面第二句（按用户澄清的设计意图）：判定「**发动本牌之前**，本回合中你是否有伤害牌
++				// 被响应而未造成伤害」。依据：响应牌在其 useCard 事件上带 `respondTo: [原使用者, 原牌]`
++				// （content.ts:5717），故在本回合历史里找「respondTo[0] 是我、且原牌带伤害标签」的记录。
++				// 有 → 本次额外再获得 1 点护甲与伤害 +1（合计 2 点护甲、伤害 +2）；无 → 只有基础 1 点。
++				const responded = game.getGlobalHistory("useCard").some(evt => {
++					return (
++						Array.isArray(evt.respondTo) &&
++						evt.respondTo[0] === player &&
++						!!evt.respondTo[1] &&
++						!!get.tag(evt.respondTo[1], "damage")
++					);
++				});
++				const gain = responded ? 2 : 1;
++				if (responded) {
++					game.log(player, "本回合已有伤害牌被响应，泥浆铠甲额外获得1点护甲与伤害+1");
++				}
++				// 护甲 gain 点；第三参 true 即上限 5（player.js:9204-9212）
++				await player.changeHujia(gain, null, true);
++				// 本回合内下一张【杀】伤害 +gain：辅助技能 yomi_nijiang_kaijia_buff（到本回合结束阶段开始前失效）。
++				if (!player.hasSkill("yomi_nijiang_kaijia_buff")) {
++					player.storage.yomi_nijiang_kaijia_bonus = 0;
++				}
++				player.storage.yomi_nijiang_kaijia_bonus = (player.storage.yomi_nijiang_kaijia_bonus || 0) + gain;
++				player.addTempSkill("yomi_nijiang_kaijia_buff", { player: "phaseJieshuBegin" });
++			},
++		},
++
++		// 火云车：CSV id=40。弃两张牌，造成2点火焰伤害。
++		// 用户的设计规则：卡面上「弃X张牌」后面**紧跟着效果**（没有「以」字）时，
++		// 表示牌不够 X 张也可以把可弃的牌全部弃掉、效果照常结算；若效果前有「以」字，则必须先满足代价。
++		// 本卡无「以」字 → 不足 2 张时全弃并照样造成 2 点火焰伤害。
++		yomi_huoyunche: {
++			type: "trick",
++			cardnature: "fire", // 火属性牌
++			selectTarget: 1,
++			filterTarget: lib.filter.notMe,
++			// 卡级 enable：只要有牌可弃就能使用（不再要求 ≥2 张）
++			enable(card, player) {
++				return player.countCards("he") > 0;
++			},
++			async content(event, trigger, player) {
++				const target = event.target;
++				// 代价：弃置至多 2 张牌（不足 2 张则把可弃的牌全部弃掉）
++				const count = Math.min(2, player.countCards("he"));
++				const discardResult = await player
++					.chooseToDiscard({
++						position: "he",
++						selectCard: [count, count],
++						forced: true,
++						prompt: `火云车：请弃置${count}张牌`,
++					})
++					.forResult();
++				if (!discardResult.bool) {
++					return;
++				}
++				// 目标打出一张【闪】可抵消这次火焰伤害
++				const next = target.chooseToRespond();
++				next.set("filterCard", (card, target2) => get.name(card) === "shan" && lib.filter.cardRespondable(card, target2));
++				next.set("prompt", "火云车：请打出一张【闪】，否则受到2点火焰伤害");
++				next.set("ai", card => (get.event().toRespond ? get.order(card) : -1));
++				const toRespond = 2 >= target.hp + (player.hasSkillTag("jueqing", false, target) ? 0 : target.hujia) || get.damageEffect(target, player, target, "fire") < 0;
++				next.set("toRespond", toRespond);
++				const result = await next.forResult();
++				if (!result.bool) {
++					await target.damage(2, player, "fire");
++				}
++			},
++			ai: {
++				tag: { damage: 1 },
++				result: {
++					// AI：只对敌方角色使用（造成 2 点火焰伤害对敌人是负收益）
++					target(player, target) {
++						return get.damageEffect(target, player, player, "fire");
++					},
++				},
++			},
++		},
++	},
++
++	skill: {
++		// 【生日蛋糕】的**准备阶段使用入口**（全局技能，文件末尾会被注册）：
++		// 引擎只在出牌阶段提供用牌窗口，准备阶段没有入口，所以这张「仅限准备阶段使用」的牌
++		// 必须由本技能在你进入准备阶段时**主动询问**是否使用（方案同「奥秘」）。
++		yomi_shengri_danggao_use: {
++			trigger: { player: "phaseZhunbeiBegin" },
++			// 可选发动：不要写 forced，否则会强制你用掉
++			filter(event, player) {
++				// 手里要有这张牌，且至少有一张「其它」手牌可以弃置
++				return player.countCards("h", card => card.name === "yomi_shengri_danggao") > 0 && player.countCards("h") > 1;
++			},
++			prompt: "是否使用【生日蛋糕】？",
++			async content(event, trigger, player) {
++				const cards = player.getCards("h", card => card.name === "yomi_shengri_danggao");
++				if (!cards.length) {
++					return;
++				}
++				// 强制使用这张牌（直接走 useCard，不受它 enable:false 的限制），目标为使用者自己
++				await player.useCard(cards[0], [player]);
++			},
++		},
++
++		// 风隐的「跳过下个回合」载体（挂在被选中的玩家身上，触发一次后自行移除）。
++		// ⚠️ 在 phaseBegin 时调用 skip("phase") 是否来得及跳过整个回合，**待实机验证**。
++		yomi_fengyin_skip: {
++			forced: true,
++			charlotte: true,
++			popup: false,
++			trigger: { player: "phaseBegin" },
++			async content(event, trigger, player) {
++				// 跳过整个回合的正确做法：引擎在每个**阶段事件**开始前调用 checkSkipped()
++				// （gameEvent.ts:292，比对的是 lib.phaseName 里的阶段名，见 library/index.js:14929），
++				// 所以在 phaseBegin（各阶段尚未开始）把全部阶段塞进 skipList，本回合就没有任何阶段会执行。
++				// ⚠️ 直接 skip("phase") 是无效的 —— "phase" 不在 lib.phaseName 里。
++				for (const phase of lib.phaseName) {
++					player.skip(phase);
++				}
++				game.log(player, "的回合被", "#y风隐", "跳过");
++				player.removeSkill("yomi_fengyin_skip");
++			},
++		},
++
++		// 贪婪的吸血载体：本回合内你使用的牌造成伤害后，为你回复等量体力。
++		yomi_tanlan_buff: {
++			forced: true,
++			charlotte: true,
++			popup: false,
++			trigger: { source: "damageAfter" },
++			filter(event, player) {
++				// 只对「由牌造成的伤害」生效（卡面：使你之后使用的牌均具有吸血）
++				return !!event.card && event.num > 0;
++			},
++			async content(event, trigger, player) {
++				await player.recover(trigger.num);
++			},
++		},
++
++		// 伪造账单的**响应式观察者**（全局技能，文件末尾会把它注册进 lib.skill.global）：
++		// 每当任意角色回复体力时，若本技能拥有者手牌中有【伪造账单】，就给出使用机会。
++		// 使用流程：先弃置本牌本身（视为使用）→ 再弃置与其回复量**等量**的牌 →
++		//           `trigger.cancel()` 撤销这次回复 → 令其流失等量体力。
++		// 注：卡面写的是「弃等量张牌，**以**使其的回复改为流失」，有「以」字 → 必须先满足代价。
++		yomi_weizao_zhangdan_watch: {
++			forced: true,
++			charlotte: true,
++			trigger: { global: "recoverBegin" },
++			filter(event, player) {
++				if (!event.player || event.num <= 0) {
++					return false;
++				}
++				return player.countCards("h", card => card.name === "yomi_weizao_zhangdan") > 0;
++			},
++			async content(event, trigger, player) {
++				const target = trigger.player;
++				const num = trigger.num;
++				if (!target || num <= 0) {
++					return;
++				}
++				// 询问是否使用【伪造账单】
++				const result = await player
++					.chooseBool(`伪造账单：是否弃置${num}张牌，撤销${get.translation(target)}的${num}点回复，并令其流失${num}点体力？`)
++					.set("ai", () => {
++						// AI：只有「撤销敌方角色的回复」才划算；自己或队友回复体力时不该发动。
++						return get.attitude(player, target) < 0;
++					})
++					.forResult();
++				if (!result.bool) {
++					return;
++				}
++				// 先弃置本牌本身（视为使用了这张牌）
++				const selfCards = player.getCards("h", card => card.name === "yomi_weizao_zhangdan");
++				if (selfCards.length) {
++					await player.discard(selfCards.slice(0, 1));
++				}
++				// 代价：弃置等量张牌（不足则无法支付，效果不发动）
++				if (player.countCards("he") < num) {
++					return;
++				}
++				const discardResult = await player
++					.chooseToDiscard({
++						position: "he",
++						selectCard: [num, num],
++						forced: true,
++						prompt: `伪造账单：弃置${num}张牌`,
++					})
++					.forResult();
++				if (!discardResult.bool) {
++					return;
++				}
++				// 撤销这次回复，并令其流失等量体力
++				trigger.cancel();
++				await target.loseHp(num);
++			},
++		},
++
++		// 隼鳞的装备技能：记录你造成的第一次伤害类型，并按该类型修正你受到的伤害。
++		yomi_sunlin_skill: {
++			forced: true,
++			charlotte: true,
++			trigger: { source: "damageBegin1", player: "damageBegin1" },
++			filter(event, player) {
++				const recorded = sunlinRecorded(player);
++				if (event.source === player) {
++					// 只记录第一次造成的伤害类型
++					return !recorded;
++				}
++				// 你受到的伤害：有记录才生效
++				return !!recorded;
++			},
++			async content(event, trigger, player) {
++				const type = damageKind(trigger);
++				if (trigger.source === player) {
++					// 记录到**装备牌实例**上：卸装后记录随牌一起失效，
++					// 避免 storage 常驻导致「重新装备时不再记录首次伤害类型」。
++					const equip = player.getEquip("yomi_sunlin");
++					if (equip) {
++						if (!equip.storage) {
++							equip.storage = {};
++						}
++						equip.storage.yomi_sunlin_type = type;
++					}
++					game.log(player, "记录了伤害类型", get.translation(`yomi_sunlin_type_${type}`));
++					return;
++				}
++				// 你受到的伤害：同类型翻倍，异类型减半（向下取整）
++				if (type === sunlinRecorded(player)) {
++					trigger.num = trigger.num * 2;
++				} else {
++					trigger.num = Math.floor(trigger.num / 2);
++				}
++			},
++		},
++
++		// 光刃的装备技能：每个回合你使用的第一张属性伤害牌伤害 +1（回合开始时重置）。
++		yomi_guangren_skill: {
++			forced: true,
++			charlotte: true,
++			trigger: { source: "damageBegin1", global: "phaseBegin" },
++			filter(event, player) {
++				if (event.name === "phaseBegin") {
++					return true;
++				}
++				return typeof event.hasNature === "function" && event.hasNature() && !player.storage.yomi_guangren_used;
++			},
++			async content(event, trigger, player) {
++				if (trigger.name === "phaseBegin") {
++					// 每个回合开始时重置「本回合是否已用过」
++					delete player.storage.yomi_guangren_used;
++					return;
++				}
++				trigger.num++;
++				player.storage.yomi_guangren_used = true;
++			},
++		},
++
++		// 泥浆铠甲的临时增益：本回合下一张【杀】伤害 +1，结算前触发一次后自行移除（仿本体裸衣 luoyi2）。
++		yomi_nijiang_kaijia_buff: {
++			trigger: { source: "damageBegin1" },
++			filter(event) {
++				return event.card && get.name(event.card) === "sha" && event.notLink();
++			},
++			forced: true,
++			charlotte: true,
++			// 加成层数由卡定义在发动时一次写入（1 层或 2 层，取决于发动前本回合是否有伤害牌被响应）。
++			async content(event, trigger, player) {
++				trigger.num += player.storage.yomi_nijiang_kaijia_bonus || 1;
++				delete player.storage.yomi_nijiang_kaijia_bonus;
++				player.removeSkill("yomi_nijiang_kaijia_buff");
++			},
++			ai: {
++				damageBonus: true,
++			},
++		},
++	},
++
++	translate: {
++		yomi_pack_core: "原创核心·无色牌池", // → lib.translate["yomi_pack_core_card_config"]
++
++		yomi_huanhunxianyao: "还魂仙药",
++		yomi_huanhunxianyao_bg: "魂",
++		yomi_huanhunxianyao_info: "出牌阶段，对自己使用；此牌也可以被重铸。若你的当前体力上限低于武将的初始体力上限，则使其恢复为初始体力上限。",
++
++		yomi_huixing: "彗星",
++		yomi_huixing_bg: "彗",
++		yomi_huixing_info:
++			"出牌阶段，对一名其他角色使用。你失去全部体力，然后对其造成等同于失去值加1的伤害（至多5点）；其可以弃置任意张牌，每弃置2张抵消1点伤害。",
++
++		yomi_kuangzhanshizhihun: "狂战士之魂",
++		yomi_kuangzhanshizhihun_bg: "魂",
++		yomi_kuangzhanshizhihun_info:
++			"出牌阶段，对一名其他角色使用。你摸一张牌，若为黑色则弃置之并对其造成1点伤害，如此重复；然后你弃置1张牌。",
++
++		yomi_huanma_fengbo: "换马风波",
++		yomi_huanma_fengbo_bg: "马",
++		yomi_huanma_fengbo_info: "出牌阶段，对所有角色使用；此牌也可以被重铸。将场上所有角色的坐骑全部重铸（弃置并各摸一张牌）。",
++
++		yomi_fengyin: "风隐",
++		yomi_fengyin_bg: "隐",
++		yomi_fengyin_info: "出牌阶段，对一名其他角色使用；此牌也可以被重铸。你弃置1张手牌，然后你与该角色跳过各自的下一个回合。",
++		yomi_fengyin_skip: "风隐",
++		yomi_fengyin_skip_info: "你的下一个回合被跳过。",
++
++		yomi_bianfu: "蝙蝠",
++		yomi_bianfu_bg: "蝠",
++		yomi_bianfu_info: "出牌阶段，对一名其他角色使用。你弃置1张牌，对其造成1点伤害并回复1点体力；其可以打出一张【闪】抵消此伤害。",
++
++		yomi_tanlan: "贪婪",
++		yomi_tanlan_bg: "贪",
++		yomi_tanlan_info: "出牌阶段，对自己使用。本回合内你使用的牌造成的伤害，均会为你回复等量体力。",
++		yomi_tanlan_buff: "贪婪",
++		yomi_tanlan_buff_info: "本回合内你使用的牌造成伤害后，你回复等量体力。",
++
++		yomi_weizao_zhangdan: "伪造账单",
++		yomi_weizao_zhangdan_bg: "账",
++		yomi_weizao_zhangdan_info:
++			"有角色回复体力时可以使用。你弃置与其回复量等量的牌，以撤销其本次回复，并令其流失等量体力。",
++		yomi_weizao_zhangdan_watch: "伪造账单",
++		yomi_weizao_zhangdan_watch_info:
++			"任意角色回复体力时，若你手牌中有【伪造账单】，你可以弃置与其回复量等量的牌，撤销这次回复并令其流失等量体力。",
++
++		yomi_sunlin: "隼鳞",
++		yomi_sunlin_bg: "鳞",
++		yomi_sunlin_info:
++			"防具。你装备此牌后造成的第一次伤害类型会被记录（基本、锦囊、技能、其它）；你受到的与记录相同类型的伤害翻倍，不同类型的伤害减半（向下取整）。无记录时上述效果不生效。",
++		yomi_sunlin_skill: "隼鳞",
++		yomi_sunlin_skill_info: "记录你首次造成的伤害类型；你受到同类型伤害翻倍，不同类型伤害减半。",
++
++		yomi_guangren: "光刃",
++		yomi_guangren_bg: "刃",
++		yomi_guangren_info: "攻击范围4。每个回合你使用的第一张属性伤害牌伤害+1。",
++		yomi_guangren_skill: "光刃",
++		yomi_guangren_skill_info: "每个回合你使用的第一张属性伤害牌伤害+1。",
++
++		yomi_shengri_danggao: "生日蛋糕",
++		yomi_shengri_danggao_bg: "糕",
++		yomi_shengri_danggao_info:
++			"准备阶段开始时，你可以弃置1张其它手牌来使用本牌。你可以弃置你判定区内的任意张牌，并可使你判定区内的任意张牌立即额外进行一次判定（该判定不会使这些牌离开判定区）。",
++		yomi_shengri_danggao_use: "生日蛋糕",
++		yomi_shengri_danggao_use_info: "你的准备阶段开始时，若你手牌中有【生日蛋糕】且还有其它手牌，你可以使用它。",
++
++		yomi_mingsha_xianjing: "鸣沙陷阱",
++		yomi_mingsha_xianjing_bg: "沙",
++		yomi_mingsha_xianjing_info:
++			"出牌阶段，对你攻击范围内的一名其他角色使用。令X为你体力上限的四分之一（向上取整）加你的护甲值；该角色可打出任意张【杀】或【闪】响应，每张抵消1点伤害，最后受到剩余点数的伤害。",
++
++		yomi_nijiang_kaijia: "泥浆铠甲",
++		yomi_nijiang_kaijia_bg: "泥",
++		yomi_nijiang_kaijia_info:
++			"出牌阶段，对自己使用。你弃置1张牌，获得1点护甲（上限5点），本回合你使用的下一张【杀】伤害+1；若发动本牌之前，本回合已有你的伤害牌被响应而未造成伤害，则改为获得2点护甲且伤害+2。",
++
++		yomi_nijiang_kaijia_buff: "泥浆铠甲", // 卡包级辅助技能的中文显示名（必填，否则弹窗显示英文 id）
++		yomi_nijiang_kaijia_buff_info: "本回合你使用的下一张【杀】伤害+1（若发动泥浆铠甲前本回合已有伤害牌被响应，则为+2）。",
++
++		yomi_huoyunche: "火云车",
++		yomi_huoyunche_bg: "车",
++		yomi_huoyunche_info:
++			"出牌阶段，对一名其他角色使用。你弃置至多2张牌（不足2张则全部弃置），对其造成2点火焰伤害；其可以打出一张【闪】抵消此伤害。",
++
++		// 隼鳞记录类型的中文名（game.log 用）
++		yomi_sunlin_type_basic: "基本",
++		yomi_sunlin_type_trick: "锦囊",
++		yomi_sunlin_type_skill: "技能",
++		yomi_sunlin_type_other: "其它",
++	},
++
++	// 勾选本包后，下列牌进入牌堆。
++	list: [
++		["heart", 5, "yomi_huanhunxianyao"], // 红桃 5（无色卡轮转全局第 5 位）
++		["diamond", 6, "yomi_huixing"], // 方块 6（无色卡轮转全局第 6 位，CSV id=2）
++		["club", 4, "yomi_kuangzhanshizhihun"], // 梅花 4（CSV 原值）
++		["club", 8, "yomi_huanma_fengbo"], // 梅花 8（无色卡轮转全局第 8 位）
++		["diamond", 10, "yomi_fengyin"], // 方块 10（无色卡轮转全局第 10 位）
++		["heart", 13, "yomi_bianfu"], // 红桃 K(13)（无色卡轮转全局第 13 位）
++		["diamond", 1, "yomi_tanlan"], // 方块 A(1)（无色卡轮转全局第 14 位）
++		["spade", 2, "yomi_weizao_zhangdan"], // 黑桃 2（无色卡轮转全局第 15 位）
++		["club", 3, "yomi_sunlin"], // 梅花 3（无色卡轮转全局第 16 位）
++		["heart", 4, "yomi_guangren"], // 红桃 4（无色卡轮转全局第 17 位）
++		["diamond", 5, "yomi_shengri_danggao"], // 方块 5（无色卡轮转全局第 18 位）
++		["spade", 6, "yomi_huixing"], // 黑桃 6（无色卡轮转全局第 19 位，CSV id=54，与上面同一张卡的第二张实体牌）
++		["diamond", 2, "yomi_mingsha_xianjing"], // 方块 2（无色卡轮转全局第 2 位，第一批）
++		["spade", 3, "yomi_nijiang_kaijia"], // 黑桃 3（无色卡轮转全局第 3 位，第一批）
++		["club", 4, "yomi_huoyunche"], // 梅花 4（无色卡轮转全局第 4 位，第一批）
++	],
++};
++
++/**
++ * 【伪造账单】的响应式观察者 `yomi_weizao_zhangdan_watch` 必须是**全局技能**（对所有玩家生效）：
++ * 每当任意角色回复体力时，检查各玩家手牌里有没有这张牌并给出使用机会。
++ *
++ * 但卡包的 `skill` 段只会把技能写进 `lib.skill`，**不会**自动加入 `lib.skill.global`，
++ * 所以这里手动注册。⚠️ 踩坑记录：早先只写 `lib.skill.global.add(name)`，
++ *   若此时 `lib.skill.global` 还不是带 `.add` 的扩展数组，就会**静默抛错**、技能永远挂不上
++ *   （表现为"有角色回复体力时根本不弹询问框"）。现在改成容错写法 + 多时间点重试。
++ */
++function registerGlobalSkill(name) {
++	if (!lib.skill || !lib.skill[name]) {
++		return;
++	}
++	// ★ 必须用 game.addGlobalSkill：它除了把技能名加进 lib.skill.global，
++	//   还会把技能的 trigger 注册到 lib.hook.globalskill（见 game/index.js:6316-6345）——
++	//   只写 lib.skill.global.add(name) 的话，**trigger 永远不会被触发**，
++	//   表现为"有角色回复体力时根本不弹询问框"。
++	if (typeof game.addGlobalSkill === "function") {
++		game.addGlobalSkill(name);
++		return;
++	}
++	// 兜底：老引擎没有该 API 时，至少把技能名挂进 global
++	const g = lib.skill.global;
++	if (g && typeof g.add === "function") {
++		g.add(name);
++	} else if (Array.isArray(g) && !g.includes(name)) {
++		g.push(name);
++	}
++}
++function registerWeizaoWatch() {
++	registerGlobalSkill("yomi_weizao_zhangdan_watch");
++	// 顺带注册【生日蛋糕】的准备阶段使用入口（同样是"对所有人生效"的技能）
++	registerGlobalSkill("yomi_shengri_danggao_use");
++}
++[0, 300, 1000, 3000].forEach(t => setTimeout(registerWeizaoWatch, t));
++
++/**
++ * 给**所有会造成伤害的自制卡**统一补上引擎标准标签 `ai.tag.damage`。
++ *
++ * 依据：`get.tag(card, "damage")` 只读 `lib.card[卡名].ai.tag.damage`
++ *   （见 get/index.js:4670-4678；本体只有伤害牌才写这个标签）。
++ * 自制卡漏写它，任何"以伤害牌为条件"的联动都会失效 —— 例如【欢愉＊笑点】的乘区、
++ * 技能里 `get.tag(card, "damage")` 的判断（本项目已踩过此坑）。
++ * 放在此处**集中注入**，避免逐张漏写；新增伤害卡时只要加进下面的清单即可。
++ */
++const YOMI_DAMAGE_CARDS = [
++	"yomi_huixing", // 彗星
++	"yomi_kuangzhanshizhihun", // 狂战士之魂
++	"yomi_bianfu", // 蝙蝠
++	"yomi_mingsha_xianjing", // 鸣沙陷阱
++	"yomi_huoyunche", // 火云车
++	"yomi_dangtou_banghe", // 当头棒喝（sanguo 包）
++	"yomi_huogong3", // 火攻（改）（sanguo 包）
++	"yomi_monengbao", // 魔能爆（crossover 包）
++];
++function injectDamageTag() {
++	if (!lib.card) {
++		return;
++	}
++	for (const name of YOMI_DAMAGE_CARDS) {
++		const info = lib.card[name];
++		if (!info) {
++			continue;
++		}
++		info.ai = info.ai || {};
++		info.ai.tag = Object.assign({ damage: 1 }, info.ai.tag);
++	}
++}
++[0, 300, 1000, 3000].forEach(t => setTimeout(injectDamageTag, t));
+diff --git a/apps/core/card/yomi_pack_crossover.js b/apps/core/card/yomi_pack_crossover.js
+new file mode 100644
+index 0000000..f13c9f9
+--- /dev/null
++++ b/apps/core/card/yomi_pack_crossover.js
+@@ -0,0 +1,173 @@
++// @ts-nocheck
++/**
++ * 自制游戏卡 · 主题包 2「跨界联动·异界来客」（包名 `yomi_pack_crossover`，56 张归属 11 张）
++ *
++ * 结构依据：`卡牌实现方案.md` §一、§七（勾选 / 单卡禁用）、§八（分包方案）。
++ * 加载链路与「能看到 / 能勾选 / 能单卡禁用」的三项硬条件同 `yomi_pack_sanguo.js` 头部说明：
++ *   ① `export const type = "card"` + `export default {...}`；
++ *   ② 每张卡的 `translate[<卡id>_info]` 必须在（`init/loading.ts:17`，缺则该卡不进 `lib.cardPack`，界面看不到也无法禁用）；
++ *   ③ `list` 正常填写 `[花色, 点数, 卡id]`（`init/loading.ts:40`、`:57`）。
++ * 包名不带 `mode_` 前缀（`cardPackMenu.js:270-272`，否则失去单卡禁用能力）。
++ *
++ * 花色点数依据：
++ *   - `yomi_shoupai_mosha` 在 CSV 中为「无色」，按轮转规则发放（全局第 1 位已发：红桃 A）；
++ *   - `yomi_suoruisendadi_chui` 在 CSV 中为「黑桃 A」，属本来就有花色点数的卡，沿用原值、不参与轮转；
++ *   - `yomi_monengbao` 在 CSV 中为「无色」，按轮转规则发放（全局第 12 位：梅花 Q）。
++ *   规则与游标状态见工作区根目录 `花色点数分配记录.md`。本包不再使用引擎的 `"none"` 无色。
++ *
++ * 本包内容（累计 3 张）：
++ *   A 档（第一批）：
++ *   - `yomi_shoupai_mosha`       手牌抹杀       CSV id=22，由旧试点包 `yomi_cards` 迁入（游戏王「手札抹殺」系）。
++ *   B 档（第二批）：
++ *   - `yomi_suoruisendadi_chui`  索瑞森大帝之锤 CSV id=13，武器（攻击范围 1）；「嘲讽」无名杀无对应概念，按方案略去；
++ *   - `yomi_monengbao`           魔能爆         CSV id=32，弃光手牌换伤害。
++ *     其余 8 张（埃辛诺斯壁垒 / 伊格诺斯之翼 / 恐惧战马 / 世界之树的嫩枝 / 守护者的力量 /
++ *     圣徒泽瑞拉 / 限一锁鸟 / 灰流丽之笑）为 C、D 档，后续批次补入。
++ *
++ * 命名依据：`名称登记表.md`（一律 `yomi_` 前缀）。本包暂无与本体重名的显示名，故不加「（改）」。
++ */
++import { lib, game, ui, get, ai, _status } from "noname";
++
++export const type = "card";
++
++export default {
++	name: "yomi_pack_crossover",
++
++	card: {
++		// 索瑞森大帝之锤：CSV id=13。武器，攻击范围 1。
++		// 卡面：每个玩家的回合结束时，你可使其额外摸一张牌。（注：该武器具有"嘲讽"）
++		// 实现：「嘲讽」在无名杀里没有对应概念（方案 §4.3 建议略去），只实现摸牌部分。
++		yomi_suoruisendadi_chui: {
++			type: "equip",
++			subtype: "equip1",
++			distance: { attackFrom: 0 }, // 攻击范围 1 → -(1-1) = 0
++			skills: ["yomi_suoruisendadi_chui_skill"],
++		},
++
++		// 魔能爆：CSV id=32。「弃掉你的所有手牌，每弃掉两张，对你选定的固定的一名其它角色造成1点伤害
++		// （伤害上限为5），其可打出任意张牌响应以抵消等量伤害。」
++		yomi_monengbao: {
++			type: "trick",
++			enable: true,
++			selectTarget: 1,
++			filterTarget: lib.filter.notMe,
++			async content(event, trigger, player) {
++				const target = event.target;
++				const hand = player.getCards("h");
++				if (hand.length) {
++					await player.discard(hand);
++				}
++				// 每弃两张 1 点伤害，上限 5
++				let num = Math.min(5, Math.floor(hand.length / 2));
++				if (num <= 0) {
++					return;
++				}
++				// 目标可打出任意张牌响应，每张抵消 1 点（写法仿【南蛮入侵】standard.js:1325-1330 与鸣沙陷阱）
++				while (num > 0) {
++					const next = target.chooseToRespond();
++					next.set("filterCard", (card, target2) => lib.filter.cardRespondable(card, target2));
++					next.set("prompt", `魔能爆：请打出一张牌抵消1点伤害（剩余${num}点，可随时停止）`);
++					next.set("ai", card => (get.event().toRespond ? get.order(card) : -1));
++					next.set("toRespond", num >= target.hp + (player.hasSkillTag("jueqing", false, target) ? 0 : target.hujia) || get.damageEffect(target, player, target) < 0);
++					const result = await next.forResult();
++					if (!result.bool) {
++						break;
++					}
++					num--;
++				}
++				if (num > 0) {
++					await target.damage(num, player);
++				}
++			},
++			ai: {
++				tag: { damage: 1 },
++				result: {
++					// AI：这是「弃光自己的手牌换伤害」的高代价牌，只对敌方角色使用
++					target(player, target) {
++						return get.damageEffect(target, player, player);
++					},
++				},
++			},
++		},
++
++		// 手牌抹杀：CSV id=22。选择一名其它角色，你与其弃置所有手牌，然后各摸等同于自己弃置数量的牌。
++		yomi_shoupai_mosha: {
++			type: "trick",
++			enable: true,
++			selectTarget: 1,
++			filterTarget: lib.filter.notMe,
++			async content(event, trigger, player) {
++				const target = event.target;
++				const myCards = player.getCards("h");
++				const targetCards = target.getCards("h");
++				// 第一步：双方各自弃光手牌
++				if (myCards.length) {
++					await player.discard(myCards);
++				}
++				if (targetCards.length) {
++					await target.discard(targetCards);
++				}
++				// 第二步：各摸等同于自己弃置数量的牌
++				if (myCards.length) {
++					await player.draw(myCards.length);
++				}
++				if (targetCards.length) {
++					await target.draw(targetCards.length);
++				}
++			},
++		},
++	},
++
++	skill: {
++		// 索瑞森大帝之锤的装备技能：每个玩家的回合结束时，你可使其额外摸一张牌。
++		// forced: true —— 让「是否发动本技能」这一层不再单独询问，玩家只需点一次 content 里的确认框。
++		yomi_suoruisendadi_chui_skill: {
++			forced: true,
++			charlotte: true,
++			trigger: { global: "phaseEnd" },
++			filter(event, player) {
++				return !!event.player;
++			},
++			async content(event, trigger, player) {
++				const target = trigger.player;
++				const result = await player
++					.chooseBool(`索瑞森大帝之锤：是否令${get.translation(target)}额外摸一张牌？`)
++					.set("ai", () => {
++						// AI 判断：摸一张牌对绝大多数角色都是正面收益，所以**只给自己和队友**，
++						// 绝不给敌方角色摸牌（`get.attitude > 0` 即友方；自己单独判一次）。
++						return target === player || get.attitude(player, target) > 0;
++					})
++					.forResult();
++				if (result.bool) {
++					await target.draw(1);
++				}
++			},
++		},
++	},
++
++	translate: {
++		yomi_pack_crossover: "跨界联动·异界来客", // → lib.translate["yomi_pack_crossover_card_config"]
++
++		yomi_suoruisendadi_chui: "索瑞森大帝之锤",
++		yomi_suoruisendadi_chui_bg: "锤",
++		yomi_suoruisendadi_chui_info: "攻击范围1。每个玩家的回合结束时，你可以令其额外摸一张牌。",
++		yomi_suoruisendadi_chui_skill: "索瑞森大帝之锤",
++		yomi_suoruisendadi_chui_skill_info: "每个玩家的回合结束时，你可以令其额外摸一张牌。",
++
++		yomi_monengbao: "魔能爆",
++		yomi_monengbao_bg: "爆",
++		yomi_monengbao_info:
++			"出牌阶段，对一名其他角色使用。你弃置所有手牌，每弃置两张对其造成1点伤害（至多5点）；其可以打出任意张牌响应，每张抵消1点伤害。",
++
++		yomi_shoupai_mosha: "手牌抹杀",
++		yomi_shoupai_mosha_bg: "抹",
++		yomi_shoupai_mosha_info: "出牌阶段，对一名其他角色使用。你与其弃置所有手牌，然后各摸等同于各自弃置数量的牌。",
++	},
++
++	// 勾选本包后，下列牌进入牌堆。
++	list: [
++		["spade", 1, "yomi_suoruisendadi_chui"], // 黑桃 A(1)（CSV 原值）
++		["club", 12, "yomi_monengbao"], // 梅花 Q(12)（无色卡轮转全局第 12 位）
++		["heart", 1, "yomi_shoupai_mosha"], // 红桃 A（无色卡轮转全局第 1 位，游标已推进）
++	],
++};
+diff --git a/apps/core/card/yomi_pack_meme.js b/apps/core/card/yomi_pack_meme.js
+new file mode 100644
+index 0000000..5c706d9
+--- /dev/null
++++ b/apps/core/card/yomi_pack_meme.js
+@@ -0,0 +1,69 @@
++// @ts-nocheck
++/**
++ * 自制游戏卡 · 主题包 4「名场面·梗卡」（包名 `yomi_pack_meme`，56 张归属 8 张）
++ *
++ * 结构依据：`卡牌实现方案.md` §一、§七（勾选 / 单卡禁用）、§八（分包方案）。
++ * 加载链路与「能看到 / 能勾选 / 能单卡禁用」的三项硬条件同 `yomi_pack_sanguo.js` 头部说明：
++ *   ① `export const type = "card"` + `export default {...}`；
++ *   ② 每张卡的 `translate[<卡id>_info]` 必须在（`init/loading.ts:17`，缺则该卡不进 `lib.cardPack`，界面看不到也无法禁用）；
++ *   ③ `list` 正常填写 `[花色, 点数, 卡id]`（`init/loading.ts:40`、`:57`）。
++ * 包名不带 `mode_` 前缀（`cardPackMenu.js:270-272`，否则失去单卡禁用能力）。
++ *
++ * 花色点数依据：本卡在 CSV 中为「无色」，按「花色点数轮转发放」规则发放实体花色与点数 ——
++ *    规则与游标状态见工作区根目录 `花色点数分配记录.md`（全局第 11 位：**黑桃 11**）。
++ *
++ * 本批内容（B 档第一批 18 张中的 1 张）：
++ *   - `yomi_liema_fengbao` 猎马风暴 CSV id=31，「弃置场上所有的坐骑」。
++ *     其余 7 张（不是我害了你 / 一对笑面虎 / 热身 / 这就不奇怪了 / 神行太保陶商之马 /
++ *     死亡是凉爽的夏夜 / 遗失）为 C、D 档，后续批次补入。
++ *
++ * 命名依据：`名称登记表.md`（一律 `yomi_` 前缀）。本包暂无与本体重名的显示名。
++ */
++import { lib, game, ui, get, ai, _status } from "noname";
++
++export const type = "card";
++
++export default {
++	name: "yomi_pack_meme",
++
++	card: {
++		// 猎马风暴：CSV id=31。「弃置场上所有的坐骑。」
++		// 实现说明：坐骑在无名杀里是 subtypes `equip3`（+1 马）与 `equip4`（-1 马），
++		// 遍历全场收集后由使用者一次性弃置（discard 会自行定位每张牌所在区域）。
++		yomi_liema_fengbao: {
++			type: "trick",
++			enable: true,
++			// 本牌不指定目标，使用后直接对全场生效（参考本体「无懈可击」等牌的 notarget 写法）
++			notarget: true,
++			async content(event, trigger, player) {
++				const cards = [];
++				for (const target of game.filterPlayer()) {
++					cards.addArray(
++						target.getCards("e", card => {
++							const subtype = get.subtype(card);
++							return subtype === "equip3" || subtype === "equip4";
++						})
++					);
++				}
++				if (cards.length) {
++					await player.discard(cards);
++				}
++			},
++		},
++	},
++
++	skill: {},
++
++	translate: {
++		yomi_pack_meme: "名场面·梗卡", // → lib.translate["yomi_pack_meme_card_config"]
++
++		yomi_liema_fengbao: "猎马风暴",
++		yomi_liema_fengbao_bg: "猎",
++		yomi_liema_fengbao_info: "出牌阶段，对所有角色使用。弃置场上所有的坐骑。",
++	},
++
++	// 勾选本包后，下列牌进入牌堆。
++	list: [
++		["spade", 11, "yomi_liema_fengbao"], // 黑桃 J(11)（无色卡轮转全局第 11 位）
++	],
++};
+diff --git a/apps/core/card/yomi_pack_reactive.js b/apps/core/card/yomi_pack_reactive.js
+new file mode 100644
+index 0000000..74593e8
+--- /dev/null
++++ b/apps/core/card/yomi_pack_reactive.js
+@@ -0,0 +1,1567 @@
++// @ts-nocheck
++/**
++ * 自制游戏卡 · 主题包 3「机变·应对与奥秘」（包名 `yomi_pack_reactive`，56 张归属 9 张）
++ *
++ * 结构依据：`卡牌实现方案.md` §一、§七（勾选 / 单卡禁用）、§八（分包方案）。
++ * 加载链路与「能看到 / 能勾选 / 能单卡禁用」的三项硬条件同 `yomi_pack_sanguo.js` 头部说明：
++ *   ① `export const type = "card"` + `export default {...}`；
++ *   ② 每张卡的 `translate[<卡id>_info]` 必须在（`init/loading.ts:17`，缺则该卡不进 `lib.cardPack`，界面看不到也无法禁用）；
++ *   ③ `list` 正常填写 `[花色, 点数, 卡id]`（`init/loading.ts:40`、`:57`）。
++ * 包名不带 `mode_` 前缀（`cardPackMenu.js:270-272`，否则失去单卡禁用能力）。
++ *
++ * 花色点数：本包无色卡按轮转规则发放（规则与游标见工作区根目录 `花色点数分配记录.md`）；
++ *   有花色点数的卡（欢愉＊笑点 方块 Q）沿用 CSV 原值、不消耗游标。
++ *
++ * ─────────────────────────────────────────────────────────────────────────
++ * 【奥秘】子系统（本项目自定义机制，用户定义）
++ * 1. 奥秘牌在**自己的出牌阶段**使用，使用后**其他人看不到你用了什么**（暗置）；
++ * 2. 持有者的武将牌左上角出现一个「**奥**」标记，多张时标记右下角显示数字；
++ * 3. 达成该奥秘的发动条件时**强制发动**，然后才结算牌面写的后续效果；
++ * 4. **发动的那一刻**奥秘牌才进入弃牌堆，此时所有人才看得到；
++ * 5. 奥秘牌带**特殊标记**（`card.storage.yomi_aomi = true`），供后续"针对奥秘牌"的牌检测。
++ *
++ * 实现要点：
++ *  · 牌去向（**暗置**）：奥秘牌**不能通过"使用牌"生效** —— 卡牌走 useCard 流程时，牌必定被
++ *    `cardsDiscard` 送进弃牌堆（弃牌堆公开 = 暴露）。因此改由卡包级技能 `yomi_aomi_use`：
++ *    技能上写 `discard: false` / `lose: false`（**只有技能上的这两个字段有效**，卡定义上无效），
++ *    再在 content 里 `player.lose(card, ui.special)` 把牌移入**特殊区** →
++ *    牌不在手牌 / 装备 / 判定区，其他人看不到，也不在弃牌堆；
++ *  · 标记：技能 `yomi_mark_aomi` 的 `marktext: "奥"`（本体同类写法见 character/bingshi/skill.js:3178 的「田」）；
++ *  · 发动：共用函数 `aomiActivate()` 负责「扣标记 → 移除观察者 → `game.cardsDiscard` 让牌进弃牌堆」。
++ * ─────────────────────────────────────────────────────────────────────────
++ *
++ * 本包内容（累计 3 张）：
++ *   B 档：`yomi_huanyu_xiaodian` 欢愉＊笑点 CSV id=70（神谕：本回合下一张伤害牌乘「欢愉乘区」）
++ *   C 档·奥秘：`yomi_mingku` 命苦啊 CSV id=4、`yomi_houfa_zhiren` 后发制人 CSV id=38
++ *
++ * 命名依据：`名称登记表.md`（一律 `yomi_` 前缀）。本包暂无与本体重名的显示名。
++ */
++import { lib, game, ui, get, ai, _status } from "noname";
++
++export const type = "card";
++
++/**
++ * 奥秘发动：把某个已暗置的奥秘牌「翻开并送进弃牌堆」，并清理它的标记与观察者技能。
++ * @param {*} player 奥秘的拥有者
++ * @param {string} cardName 奥秘牌的卡 id（如 "yomi_mingku"）
++ * @returns {boolean} 是否真的发动了（找不到牌则返回 false）
++ */
++function aomiActivate(player, cardName) {
++	const all = player.storage.yomi_aomi_cards || [];
++	const cards = all.filter(card => card.name === cardName);
++	if (!cards.length) {
++		return false;
++	}
++	// 从暗置记录里取出
++	player.storage.yomi_aomi_cards = all.filter(card => card.name !== cardName);
++	sizeCheck(player);
++	// 扣掉一个「奥」标记
++	player.removeMark("yomi_mark_aomi", cards.length);
++	// 移除该奥秘的观察者技能
++	player.removeSkill(`${cardName}_watch`);
++	// 此刻才进入弃牌堆 —— 所有玩家都能看到这张奥秘牌
++	game.cardsDiscard(cards);
++	game.log(player, "翻开了奥秘", get.translation(cardName));
++	return true;
++}
++
++/** 记录为空时清理 storage 键（避免残留空数组） */
++function sizeCheck(player) {
++	if ((player.storage.yomi_aomi_cards || []).length === 0) {
++		delete player.storage.yomi_aomi_cards;
++	}
++}
++
++/**
++ * 暗置一张奥秘牌：打上「奥秘」特殊标记、计入暗置记录、点亮「奥」标记、挂上该奥秘的观察者技能。
++ * ⚠️ 注意：奥秘**不能**通过「使用牌」的流程暗置 —— 卡牌走 useCard 流程时，牌**必定**会被
++ *    `cardsDiscard` 送进弃牌堆（弃牌堆是公开的，等于暴露）。
++ *    正确做法是用一个**技能**来消耗这张手牌（技能上的 `discard: false` / `lose: false` 才有效），
++ *    再在技能 content 里 `player.lose(card, ui.special)` 把它移入特殊区。
++ * @param {*} player 奥秘的持有者
++ * @param {*} card 要暗置的**实体牌**
++ */
++function aomiRegister(player, card) {
++	const cardName = card.name;
++	if (!card.storage) {
++		card.storage = {};
++	}
++	// ★ 特殊标记：标记这张**实体牌**是"奥秘牌"，供后续"针对奥秘"的效果检测
++	card.storage.yomi_aomi = true;
++	card.storage.yomi_aomi_name = cardName;
++	player.storage.yomi_aomi_cards = (player.storage.yomi_aomi_cards || []).concat([card]);
++	player.addMark("yomi_mark_aomi", 1);
++	player.addSkill(`${cardName}_watch`);
++	game.log(player, "暗置了一个奥秘");
++}
++
++/**
++ * 判断一次 `useCard` 是否被【无懈可击】抵消。
++ *
++ * 原理：无懈结算时会对「牌的**结算事件**」调用 `neutralize()`（`gameEvent.ts:693`），
++ *   给它打上 `_neutralized`；而这个结算事件的**父事件**正是本次 `useCard`。
++ *   本体的同类判定见 `character/newjiang/skill.js` 的「蹙国」：
++ *     game.getGlobalHistory("everything", evt => evt._neutralized && evt.getParent().name == "useCard")
++ *
++ * @param {*} useEvent `player.useCard()` 返回的 useCard 事件
++ * @returns {boolean} 是否被无懈（事件缺失时视为未成功使用，同样返回 true）
++ */
++function wasNeutralized(useEvent) {
++	if (!useEvent) {
++		return true;
++	}
++	// 兼容个别分支直接在 useCard 事件上打标记的情况
++	if (useEvent._neutralized) {
++		return true;
++	}
++	// ① 结算事件（useCard 的直接子事件，如「yomi_aomi」的牌结算事件）被 neutralize
++	if ((useEvent.childEvents || []).some(evt => evt._neutralized)) {
++		return true;
++	}
++	// ② 同上，但通过全局历史回溯（与本体「蹙国」同思路），兼容子事件未被记录的情况
++	return game.getGlobalHistory("everything", evt => evt._neutralized && evt.getParent() === useEvent).length > 0;
++}
++
++/* ─────────────────────────────────────────────────────────────────────────
++ * 【应对】子系统（本项目自定义机制，用户定义）
++ * 1. 应对牌只能在**自己的出牌阶段**暗置（与【奥秘】同款：走标准 useCard 流程，可被无懈）；
++ * 2. 暗置后其他人只能看到「有一张应对牌」+ **花色**，看不到是哪张；
++ * 3. **一名角色同时最多暗置 1 张**；
++ * 4. 只要挂着就**持续检测**：其他角色以你为**唯一目标**使用一张牌时，翻开它；
++ * 5. 按「对方这张牌是伤害类 / 非伤害类」分流触发应对效果；效果结算完后该牌**才**进弃牌堆；
++ * 6. 结算后若手里还有应对牌，可以**立即再暗置一张**。
++ * 实现思路基本镜像【奥秘】：卡包级全局技能负责暗置、标记技能负责显示、玩家私有观察者负责触发。
++ * ───────────────────────────────────────────────────────────────────────── */
++
++/** 这张实体牌是不是「应对牌」 */
++function isRespondCard(card) {
++	return !!(card && card.name && lib.card[card.name]?.yomi_respond);
++}
++
++/** 暗置一张应对牌：打标记 → 记录 → 亮「应」标记 → 挂持续检测器 */
++function respondRegister(player, card) {
++	if (!card.storage) {
++		card.storage = {};
++	}
++	card.storage.yomi_respond = true;
++	card.storage.yomi_respond_name = card.name;
++	// 上限 1 张：由 yomi_respond_use.filter 保证，这里直接覆盖式记录
++	player.storage.yomi_respond_cards = [card];
++	player.addMark("yomi_mark_respond", 1);
++	player.addSkill("yomi_respond_watch");
++	game.log(player, "暗置了一张应对牌");
++}
++
++/** 翻开（公开）一张应对牌 —— ⚠️ 此刻**还不进弃牌堆**，要等应对效果结算完（用户设计） */
++function respondReveal(player, card) {
++	player.popup(card.name);
++	game.log(player, "翻开了应对牌", card);
++}
++
++/** 应对结算完毕：应对牌进弃牌堆 + 清理「应」标记 / 记录 / 检测器 */
++function respondFinish(player, card) {
++	// ★ v0.27：**彻底重置**，不再用 filter 局部删除。
++	//   旧写法在「链中重挂」时会把新牌的记录误删/误留（记录留着、标记与观察者已没）
++	//   → 表现为「应对按钮凭空消失、再也不能暗置（已踩）」。
++	// ⚠ 只清理「当前挂载的就是这张牌」的情况；若记录已被新牌覆盖，则不动新牌的状态。
++	const current = (player.storage.yomi_respond_cards || [])[0];
++	if (current && current !== card) {
++		game.cardsDiscard([card]);
++		game.log(player, "的应对牌进入弃牌堆");
++		return;
++	}
++	delete player.storage.yomi_respond_cards;
++	const markNum = player.countMark("yomi_mark_respond");
++	if (markNum > 0) {
++		player.removeMark("yomi_mark_respond", markNum);
++	}
++	player.removeSkill("yomi_respond_watch");
++	game.cardsDiscard([card]);
++	game.log(player, "的应对牌进入弃牌堆");
++}
++
++/**
++ * 暗置流程（出牌阶段的入口 与 结算后的「立即再暗置」共用）。
++ * 与【奥秘】完全同款：走标准 `useCard` → 引擎在 `useCardToBegin` 开【无懈可击】窗口（含使用者自己）。
++ * @returns {Promise<boolean>} 是否成功暗置（被无懈返回 false）
++ */
++async function respondUse(player, card) {
++	const vcard = { name: "yomi_respond", isCard: true, suit: get.suit(card) };
++	const useEvent = player.useCard(vcard, player, false);
++	await useEvent;
++	if (wasNeutralized(useEvent)) {
++		// 归一于普通锦囊：被无懈 → 牌照样进弃牌堆，但**不**暗置
++		await player.loseToDiscardpile(card);
++		game.log(player, "暗置应对牌的尝试被【无懈可击】抵消，牌进入弃牌堆");
++		return false;
++	}
++	respondRegister(player, card);
++	await player.lose(card, ui.special);
++	return true;
++}
++
++/** 结算后：若手里还有应对牌，询问是否**立即再暗置一张**（用户设计：可以立即再次使用） */
++/** 【应对】结算链深度：>1 表示当前处于**嵌套的**应对结算中（用于禁止链中再次暗置） */
++let yomiRespondDepth = 0;
++
++async function respondOfferAgain(player) {
++	// ★ v0.27 修复「无限套娃」：结算链中不再提供「立即再暗置」
++	//   否则 A 的应对 → 反制杀 → B 的应对 → 反制杀 → A 又再挂一张……
++	//   会循环到双方手牌耗尽（用户实测）。
++	if (yomiRespondDepth > 1) {
++		return;
++	}
++	if ((player.storage.yomi_respond_cards || []).length) {
++		return;
++	}
++	if (!player.isAlive()) {
++		return;
++	}
++	const hand = player.getCards("h", card => isRespondCard(card));
++	if (!hand.length) {
++		return;
++	}
++	const bool = await player.chooseBool("应对牌已结算，是否立即再暗置一张应对牌？").forResult();
++	if (!bool.bool) {
++		return;
++	}
++	const result = await player
++		.chooseCard({
++			prompt: "选择一张要暗置的应对牌",
++			position: "h",
++			filterCard: card => isRespondCard(card),
++			selectCard: 1,
++		})
++		.forResult();
++	if (result.bool && result.cards && result.cards.length) {
++		await respondUse(player, result.cards[0]);
++	}
++}
++
++/**
++ * 为「应对伤害」注册一次伤害修正：把修正函数挂在**触发用那张牌**上。
++ * 触发时机是 `useCardToTargeted`（早于牌的结算），所以伤害还没发生 —— 需要登记到伤害结算时再应用。
++ * @param {*} player 应对牌持有者（也是受伤者）
++ * @param {*} useEvent 触发用的 useCard 事件
++ * @param {(damageEvent: *) => void} fn 修正函数（直接改 `damageEvent.num`）
++ */
++function respondModifyDamage(player, useEvent, fn) {
++	if (!player.storage.yomi_respond_mods) {
++		player.storage.yomi_respond_mods = [];
++	}
++	player.storage.yomi_respond_mods.push({ card: useEvent.card, source: useEvent.player, useId: useEvent.id, fn });
++	player.addSkill("yomi_respond_damage");
++}
++
++/**
++ * 应对牌的「分支展示」：复刻钟离【武神】的技能动画（人物图 + 技能名，`skillAnimation: true`）。
++ * ★ 用户定义（2026-10-04 修正）：以**卡面书写顺序**为准 ——
++ *   卡面**第一个**应对（写在前面的那个）对使用者有利 → 展示**应对牌拥有者**；
++ *   卡面**第二个**应对对触发者有利 → 展示**触发此应对牌的角色**。
++ *   ⚠ 第一个应对**不一定**是「应对伤害」（【冰雹】【暗突袭】的第一个就是「应对非伤害」），
++ *   所以用 `isFirst`（书写位置）而不是 `isDamage`（应对种类）决定展示谁；`isDamage` 只决定文案/颜色。
++ * 实现：调 `$skill(text, true, color)`（`type` 非字符串会被归一为 `legend`，等价于 `skillAnimation: true`）。
++ * @param {*} owner 应对牌拥有者
++ * @param {*} source 触发者（使用那张牌的人）
++ * @param {boolean} isFirst 触发的是不是卡面**第一个**应对
++ * @param {boolean} isDamage 触发的是「应对伤害」还是「应对非伤害」
++ */
++function respondShowBranch(owner, source, isFirst, isDamage) {
++	const who = isFirst ? owner : source;
++	if (!who || typeof who.$skill !== "function" || !who.isIn()) {
++		return;
++	}
++	who.$skill(isDamage ? "应对伤害" : "应对非伤害", true, isDamage ? "metal" : "wood");
++}
++
++/** 使触发用的那张牌**失效**（套用【无懈可击】的 neutralize 思路 + 剔除目标兜底）
++ * @param {*} useEvent 触发用的 useCard 事件
++ * @param {*} target 应对牌持有者（被这张牌指定为目标的人）
++ */
++function respondNeutralize(useEvent, target) {
++	if (!useEvent) {
++		return false;
++	}
++	// ① 常规：把这张牌置为「无效」
++	if (!useEvent._neutralized) {
++		useEvent.neutralize();
++	}
++	// ② 兜底：把持有者从这张牌的目标里剔除。
++	//    某些嵌套时机下 neutralize() 不足以停住正在执行的 useCard，
++	//    而把目标加入 excluded 后，引擎在「逐个目标结算」时会跳过它 —— 单目标牌等同整张牌不生效。
++	if (target && Array.isArray(useEvent.excluded) && Array.isArray(useEvent.targets) && useEvent.targets.includes(target)) {
++		useEvent.excluded.add(target);
++	}
++	// ③ v0.29：这张牌已经被应对判为「失效」，就不要再弹「即将生效、是否使用【无懈可击】？」
++	//    引擎的 `_wuxie` 过滤器首先看 `event.card.storage.nowuxie`（standard.js:4230），把它打上即可。
++	const markNowuxie = obj => {
++		if (!obj) {
++			return;
++		}
++		if (!obj.storage) {
++			obj.storage = {};
++		}
++		obj.storage.nowuxie = true;
++	};
++	markNowuxie(useEvent.card);
++	if (useEvent.card && Array.isArray(useEvent.card.cards)) {
++		for (const sub of useEvent.card.cards) {
++			markNowuxie(sub);
++		}
++	}
++	if (Array.isArray(useEvent.cards)) {
++		for (const sub of useEvent.cards) {
++			markNowuxie(sub);
++		}
++	}
++	return true;
++}
++
++/** 「在触发牌结算完之后」执行一段逻辑（一次性观察者）。
++ * ⚠ 保留备用：v0.24 起【冰雹】伤害支已改为「弃牌后**立即**出【杀】」，暂无卡使用它。 */
++function respondDeferAfter(player, useEvent, fn) {
++	const list = player.storage.yomi_respond_defer || [];
++	list.push({ id: useEvent.id, fn });
++	player.storage.yomi_respond_defer = list;
++	player.addSkill("yomi_respond_defer");
++}
++
++/**
++ * 把 `player` 的座次移动到 `target` 与其下家之间（其余人相对顺序不变）。
++ * 写法参考本体**神鲁肃【榻谋】`tamo`**（`character/shiji/skill.js:1613`）：
++ *   先算出目标座次顺序，再用一串 `game.swapSeat`（`game.broadcastAll` 广播执行）把它调成目标顺序。
++ */
++function moveSeatAfter(player, target) {
++	const players = game.filterPlayer().slice();
++	players.sortBySeat(_status.currentPhase || player);
++	const order = players.slice();
++	order.splice(order.indexOf(player), 1);
++	order.splice(order.indexOf(target) + 1, 0, player);
++	const swaps = [];
++	for (let i = 0; i < order.length; i++) {
++		const j = players.indexOf(order[i]);
++		if (j !== i) {
++			swaps.push([players[i], players[j]]);
++			[players[i], players[j]] = [players[j], players[i]];
++		}
++	}
++	if (!swaps.length) {
++		return;
++	}
++	game.broadcastAll(list => {
++		for (const pair of list) {
++			game.swapSeat(pair[0], pair[1], false);
++		}
++	}, swaps);
++	game.log(player, "将座次调整到", target, "与其下家之间");
++}
++
++/** 授予「你使用的下一张伤害牌具有吸血」（等价交换 / 暗突袭用） */
++function respondGrantVampire(player) {
++	delete player.storage.yomi_vampire_card;
++	player.storage.yomi_vampire_pending = true;
++	player.addSkill("yomi_vampire_buff");
++}
++
++/** 暗突袭共用逻辑：弃 num 张手牌 → 视为对来源使用一张【杀】（enhanced = 伤害+1 / 需两张闪） */
++async function antuixiRespond(useEvent, player, num, enhanced) {
++	const source = useEvent.player;
++	if (!source || !source.isAlive()) {
++		return;
++	}
++	if (player.countCards("h") < num) {
++		game.log(player, "手牌不足", num, "张，【暗突袭】无法弃牌");
++		return;
++	}
++	const cost = await player
++		.chooseToDiscard({
++			prompt: `暗突袭：弃${get.cnNumber(num)}张手牌`,
++			position: "h",
++			selectCard: [num, num],
++			forced: true,
++		})
++		.forResult();
++	if (!cost.bool) {
++		return;
++	}
++	// 卡面「吸血」：给这一张【杀】上吸血
++	respondGrantVampire(player);
++	player.storage.yomi_antuixi_bonus = enhanced;
++	delete player.storage.yomi_antuixi_dying;
++	player.storage.yomi_antuixi_target = source;
++	player.addTempSkill("yomi_antuixi_sha_buff", { player: "phaseJieshuBegin" });
++	await player.useCard({ name: "sha" }, source).set("addCount", false);
++	// ★ 用户设计（2026-10-04 再修正）：非伤害支（卡面**第一个**应对，enhanced）的这张【杀】
++	//   **若造成濒死**，则「这张牌应对到的那张牌」（触发用的那张牌）**直接失效**
++	// ★ v0.29.1：先取一次标记（下面的日志/判定都用它）
++	const gotDying = !!player.storage.yomi_antuixi_dying;
++	if (enhanced) {
++		game.log(player, "【暗突袭】本次反击是否造成濒死：", gotDying ? "是" : "否");
++	}
++	if (enhanced && gotDying) {
++		respondNeutralize(useEvent, player);
++		game.log(player, "【暗突袭】反击造成濒死，", useEvent.card, "失效");
++	}
++	delete player.storage.yomi_antuixi_dying;
++	delete player.storage.yomi_antuixi_target;
++	// 若这张【杀】没造成伤害（被【闪】抵消等），清理未触发的吸血载体
++	if (player.hasSkill("yomi_vampire_buff") && !player.storage.yomi_vampire_card) {
++		delete player.storage.yomi_vampire_pending;
++		player.removeSkill("yomi_vampire_buff");
++	}
++}
++
++/**
++ * 对武将包暴露的小 API（现位于 `character/yomi_char_test/skill.js`，v0.31 前为 `character/custom/skill.js`）。
++ * 为何要暴露：`respondRegister` 等本是卡包内的模块级私有函数，武将包拿不到；
++ * 测试技能需要「把一张应对牌直接挂到某个角色身上」的能力。
++ * 属性名固定为 `lib.yomiRespond`，缺失时测试技能会优雅失败并打日志。
++ */
++lib.yomiRespond = {
++	isRespondCard,
++	register: respondRegister,
++	finish: respondFinish,
++	use: respondUse,
++	reveal: respondReveal,
++};
++
++export default {
++	name: "yomi_pack_reactive",
++
++	card: {
++		// ★【奥秘】的**公共虚拟卡**：用于让"暗置奥秘"这个动作在字幕／日志里显示为「奥秘」，
++		//   而不是暴露真实卡名。它**不进 `list`**（没有实体牌），只作为 useCard 的虚拟载体。
++		//   —— 保留 `suit`（花色）与花色相关交互，但不带 `number`（点数），
++		//      这样玩家只能"按花色猜是哪张奥秘"，无法用"花色+点数"直接锁定。
++		//   ⚠️ 必须 `enable: true`：`player.useCard()` 虽然是把牌"强制使用"，
++		//      但引擎在结算前仍会检查 `lib.filter.cardEnabled`；若这里是 false，
++		//      整个使用流程会被静默跳过 —— 表现就是「没有字幕、也无法被无懈」（本项目已踩此坑）。
++		yomi_aomi: {
++			type: "trick",
++			enable: true,
++			wuxieable: true, // 明确允许被【无懈可击】响应（暗置动作可被无懈）
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			async content(event, trigger, player) {
++				// 虚拟牌不产生任何结算（真正的效果由各奥秘的观察者技能负责）
++				return;
++			},
++		},
++
++		// ★【应对】的公共虚拟卡：让「暗置应对牌」在字幕/日志里显示为「应对」而不暴露真实卡名。
++		//   与【奥秘】同款：不进 list、保留花色、不带点数。
++		//   ⚠️ 必须 enable: true（否则使用流程被静默跳过，见上方 yomi_aomi 的注释）。
++		yomi_respond: {
++			type: "trick",
++			enable: true,
++			wuxieable: true,
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			async content(event, trigger, player) {
++				// 虚拟牌不产生结算；真正的效果由 yomi_respond_watch 负责
++				return;
++			},
++		},
++
++		// 吓退：CSV id=45，锦囊·应对（本包【应对】子系统的**原型卡**，用于验证整套机制）。
++		//   应对伤害：令此伤害减半(向下取整)，然后你可令来源的装备区内的一张牌弃置。
++		//   应对非伤害：无事发生。
++		yomi_xiadui: {
++			type: "trick",
++			yomi_respond: true,
++			// 卡面**第一个**应对是哪个分支（决定分支动画展示持有者还是触发者）：
++			//   "damage" = 应对伤害写在前；"other" = 应对非伤害写在前
++			yomiRespondFirst: "damage",
++			enable: false, // 不能直接使用；暗置由全局技能 yomi_respond_use 完成
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			async content(event, trigger, player) {
++				// 占位（enable: false，本卡不会被直接使用）
++				return;
++			},
++			// ── 应对【伤害类牌】：由 yomi_respond_watch 在 useCardToTargeted 时调用 ──
++			async yomiRespondDamage(useEvent, player) {
++				// ① 令此伤害减半（向下取整）——登记到伤害结算时应用
++				respondModifyDamage(player, useEvent, damage => {
++					damage.num = Math.max(0, Math.floor(damage.num / 2));
++				});
++				// ② 然后你可令来源弃置装备区内的一张牌
++				const source = useEvent.player;
++				if (!source || !source.isAlive() || !source.countCards("e")) {
++					return;
++				}
++				const bool = await player.chooseBool(`吓退：是否令${get.translation(source)}弃置装备区内的一张牌？`).forResult();
++				if (!bool.bool) {
++					return;
++				}
++				await player.discardPlayerCard({ target: source, position: "e", forced: true });
++			},
++			// ── 应对【非伤害类牌】：无事发生 ──
++			async yomiRespondOther(useEvent, player) {
++				game.log(player, "的【吓退】对非伤害牌无事发生");
++			},
++		},
++
++		// 泡沫幻影：CSV id=27，锦囊·应对。
++		//   应对伤害：令此伤害减半(向下取整)，你可以将座次调整到任意其它两名角色之间。
++		//   应对非伤害：无事发生。
++		yomi_paomo_huanying: {
++			type: "trick",
++			yomi_respond: true,
++			yomiRespondFirst: "damage", // 卡面顺序：应对伤害 在前
++			enable: false,
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			async content(event, trigger, player) {
++				return;
++			},
++			async yomiRespondDamage(useEvent, player) {
++				// ① 伤害减半
++				respondModifyDamage(player, useEvent, damage => {
++					damage.num = Math.max(0, Math.floor(damage.num / 2));
++				});
++				// ② 你可以将座次调整到任意其它两名角色之间（选一名角色，坐到他与其下家之间）
++				if (game.filterPlayer(c => c !== player && c.isAlive()).length < 2) {
++					return;
++				}
++				const result = await player
++					.chooseTarget({
++						prompt: "泡沫幻影：是否调整座次？（你将坐到所选角色与其下家之间）",
++						filterTarget: (card, p, t) => t !== p && t.isAlive(),
++						selectTarget: 1,
++					})
++					.forResult();
++				if (result.bool && result.targets && result.targets.length) {
++					moveSeatAfter(player, result.targets[0]);
++				}
++			},
++			async yomiRespondOther(useEvent, player) {
++				game.log(player, "的【泡沫幻影】对非伤害牌无事发生");
++			},
++		},
++
++		// 冰雹：CSV id=28，锦囊·应对。
++		//   应对非伤害：你弃一张牌，以使之失效。那之后，若本回合是其的回合，
++			//     令其在本回合内至多再使用一张牌并受到1点伤害。
++		//   应对伤害：你弃一张牌，以视为你在之后对其使用一张无距离次数限制的普通【杀】。
++		yomi_bingbao: {
++			ai: { tag: { damage: 1 } },
++			type: "trick",
++			yomi_respond: true,
++			yomiRespondFirst: "other", // 卡面顺序：应对非伤害 在前
++			enable: false,
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			async content(event, trigger, player) {
++				return;
++			},
++			async yomiRespondOther(useEvent, player) {
++				// ★「以」字规则：必须先弃得出 1 张牌（**手牌或装备区**），否则后续效果不生效
++				if (!player.countCards("he")) {
++					game.log(player, "无牌可弃，【冰雹】后续效果不生效");
++					return;
++				}
++				const cost = await player
++					.chooseToDiscard({
++						prompt: `冰雹：弃一张牌，使${get.translation(useEvent.card)}失效`,
++						position: "he",
++						selectCard: 1,
++						forced: true,
++					})
++					.forResult();
++				if (!cost.bool) {
++					return;
++				}
++				respondNeutralize(useEvent, player);
++				game.log(player, "令", useEvent.card, "失效");
++				const source = useEvent.player;
++				if (!source || !source.isAlive()) {
++					return;
++				}
++				// 那之后，若本回合是其的回合：至多再使用一张牌 + 受到1点伤害
++				if (_status.currentPhase === source) {
++					source.storage.yomi_bingbao_allow = 1;
++					source.addTempSkill("yomi_bingbao_limit", { player: "phaseUseEnd" });
++					await source.damage(1, player);
++				}
++			},
++			async yomiRespondDamage(useEvent, player) {
++				const source = useEvent.player;
++				if (!source || !source.isAlive()) {
++					return;
++				}
++				// ★「以」字规则：必须先弃得出 1 张牌（**手牌或装备区**），否则后续效果不生效
++				if (!player.countCards("he")) {
++					game.log(player, "无牌可弃，【冰雹】后续效果不生效");
++					return;
++				}
++				const cost = await player
++					.chooseToDiscard({
++						prompt: `冰雹：弃一张牌，以视为对${get.translation(source)}使用一张【杀】`,
++						position: "he",
++						selectCard: 1,
++						forced: true,
++					})
++					.forResult();
++				if (!cost.bool) {
++					return;
++				}
++				// 「弃牌后」立即视为对触发者使用一张无距离次数限制的普通【杀】
++				await player.useCard({ name: "sha" }, source).set("addCount", false);
++			},
++		},
++
++		// 等价交换：CSV id=29，锦囊·应对。
++		//   应对伤害：令此伤害减半(向下取整)，使你使用的下一张伤害牌具有吸血。
++		//   应对非伤害：无事发生。
++		yomi_dengjia_jiaohuan: {
++			type: "trick",
++			yomi_respond: true,
++			yomiRespondFirst: "damage", // 卡面顺序：应对伤害 在前
++			enable: false,
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			async content(event, trigger, player) {
++				return;
++			},
++			async yomiRespondDamage(useEvent, player) {
++				respondModifyDamage(player, useEvent, damage => {
++					damage.num = Math.max(0, Math.floor(damage.num / 2));
++				});
++				respondGrantVampire(player);
++			},
++			async yomiRespondOther(useEvent, player) {
++				game.log(player, "的【等价交换】对非伤害牌无事发生");
++			},
++		},
++
++		// 暗突袭（弃 1 张）：CSV id=43，锦囊·应对。吸血。
++		//   应对非伤害：你弃一张手牌，以视为你对来源使用一张伤害+1、需要两张【闪】响应、
++		//     无距离次数限制的普通【杀】。此【杀】若造成溣死，那【闪】无效。
++		//   应对伤害：你弃一张手牌，以视为你对来源使用一张无距离次数限制的普通【杀】。
++		yomi_antuixi1: {
++			type: "trick",
++			yomi_respond: true,
++			yomiRespondFirst: "other", // 卡面顺序：应对非伤害 在前
++			enable: false,
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			async content(event, trigger, player) {
++				return;
++			},
++			yomiRespondDamage: (useEvent, player) => antuixiRespond(useEvent, player, 1, false),
++			yomiRespondOther: (useEvent, player) => antuixiRespond(useEvent, player, 1, true),
++		},
++
++		// 暗突袭（弃 2 张）：CSV id=44，锦囊·应对。吸血；同 43，弃牌数改为 2。
++		yomi_antuixi2: {
++			type: "trick",
++			yomi_respond: true,
++			yomiRespondFirst: "other", // 卡面顺序：应对非伤害 在前
++			enable: false,
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			async content(event, trigger, player) {
++				return;
++			},
++			yomiRespondDamage: (useEvent, player) => antuixiRespond(useEvent, player, 2, false),
++			yomiRespondOther: (useEvent, player) => antuixiRespond(useEvent, player, 2, true),
++		},
++
++		// 命苦啊：CSV id=4，锦囊·奥秘。「奥秘：当你连续两个回合体力减少过时可以发动，使你回复两点体力。」
++		yomi_mingku: {
++			type: "trick",
++			yomi_aomi: true,
++			enable: false,
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			// ⚠️ 实现方式（重要）：奥秘**不能通过「使用牌」生效** —— 卡牌走 useCard 流程时，
++			//   牌**必定**被 `cardsDiscard` 送进弃牌堆（弃牌堆是公开的，等于直接暴露）。
++			//   真正的暗置由卡包级技能 `yomi_aomi_use` 完成（技能上的 discard/lose 字段才有效）。
++			async content(event, trigger, player) {
++				// 占位：本卡不能被直接使用（enable: false），此处不产生任何结算
++				return;
++			},
++		},
++
++		// 后发制人：CSV id=38，锦囊·奥秘。
++		// 「奥秘：你成为其它角色【杀】的目标而非因其受到伤害后可以发动，
++		//   视为你对其使用一张伤害+1，无次数距离限制、需要两张【闪】响应的【杀】。」
++		yomi_houfa_zhiren: {
++			type: "trick",
++			yomi_aomi: true,
++			enable: false,
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			// 暗置方式与「命苦啊」相同（见上面的说明）：不能直接使用，由 yomi_aomi_use 暗置
++			async content(event, trigger, player) {
++				// 占位：本卡不能被直接使用（enable: false），此处不产生任何结算
++				return;
++			},
++		},
++
++		// 欢愉*笑点：CSV id=70。「本回合你使用的下一张以你为伤害来源的会造成伤害的牌A，
++		// 造成的伤害额外乘以欢愉乘区，欢愉乘区至少为1。
++		// 欢愉乘区为：（牌A的目标数 ×（此牌与牌A间隔期间使用的锦囊牌数 − 基本牌数）− 1）」
++		yomi_huanyu_xiaodian: {
++			type: "trick",
++			// 关键三件套：enable / selectTarget:-1 / modTarget（对照本体「无中生有」standard.js:2058-2070）。
++			// ⚠️ 之前漏写 enable，导致这张牌在出牌阶段**根本无法点击使用**（用户实测反馈）。
++			enable: true,
++			toself: true,
++			selectTarget: -1,
++			modTarget: true,
++			filterTarget(card, player, target) {
++				return target === player;
++			},
++			async content(event, trigger, player) {
++				// 初始化"间隔期间"的计数器
++				player.storage.yomi_huanyu_trick = 0;
++				player.storage.yomi_huanyu_basic = 0;
++				delete player.storage.yomi_huanyu_zone;
++				delete player.storage.yomi_huanyu_card;
++				player.addTempSkill("yomi_huanyu_xiaodian_buff", { player: "phaseJieshuBegin" });
++			},
++		},
++	},
++
++	skill: {
++		// 【奥秘】暗置入口（卡包级技能，**替代"使用奥秘牌"的流程**）：
++		// 出牌阶段，选择一张你手里的奥秘牌，把它暗置到「特殊区」。
++		//
++		// ★ 关键：`discard: false` / `lose: false` 这两个字段**只有写在技能上才有效**
++		//   （卡牌定义上的同名字段无效）—— 它们让引擎不弃置本次消耗的牌，
++		//   随后 content 里我们自己 `player.lose(card, ui.special)` 把牌移入特殊区，
++		//   牌因此**不会进弃牌堆**（弃牌堆是公开的，进去就等于暴露）。
++		yomi_aomi_use: {
++			enable: "phaseUse",
++			discard: false,
++			lose: false,
++			// 只有「手牌区里带 yomi_aomi 标记」的牌才能被暗置
++			filter(event, player) {
++				return player.countCards("h", card => !!lib.card[card.name]?.yomi_aomi);
++			},
++			filterCard(card, player) {
++				return !!lib.card[card.name]?.yomi_aomi;
++			},
++			position: "h",
++			selectCard: 1,
++			prompt: "选择一张要暗置的奥秘牌",
++			// ★ 技能说明（点开技能看到的内容）：**按查看者区分** ——
++			//   持有者本人列出自己暗置的每一张奥秘（卡名 + 花色）；
++			//   其他人只看到数量与花色，看不到是哪张（保持奥秘的不可知性）。
++			intro: {
++				name: "奥秘",
++				content(storage, player) {
++					const cards = (player && player.storage && player.storage.yomi_aomi_cards) || [];
++					if (!cards.length) {
++						return "你没有暗置的奥秘";
++					}
++					if (player === game.me) {
++						return cards.map(card => `【${get.translation(card.name)}】（${get.translation(get.suit(card))}）`).join("<br>");
++					}
++					const suits = cards.map(card => get.translation(get.suit(card))).join("、");
++					return `暗置的奥秘 ${cards.length} 张（花色：${suits}）`;
++				},
++			},
++			async content(event, trigger, player) {
++				const card = event.cards[0];
++				if (!card) {
++					return;
++				}
++				// ① 走**标准使用流程**，把「暗置奥秘」表现为「使用一张【奥秘】锦囊」。
++				//    ★ 无懈可击的规则（用户 2026-10-04 定为标准，与本体现行规则一致）：
++				//      【无懈可击】响应的是**锦囊牌本身**，不是使用者；因此只要该锦囊尚未结算完，
++				//      **任何人都可以响应它 —— 包括使用者自己**（`standard.js` 的 `_wuxie`：
++				//      第一步 `game.filterPlayer(current => ... current.hasWuxie(map))` 的候选里
++				//      **不排除**牌的使用者，使用者排在自己回合的座位序里还会最先被询问）。
++				//    · 引擎在牌的**结算事件**的 `useCardToBegin` 上插入无懈窗口；`player.useCard`
++				//      与 `chooseToUse` 走的是同一个 `useCard` 事件（`player.js` 的 chooseToUse 最后
++				//      也是调 `this.useCard(...)`），所以这里直接用 `player.useCard` 即可，
++				//      并且能**拿到 useCard 事件本身**用于精确判定是否被无懈（见 ②）。
++				//    · 黄月英等「使用锦囊时摸牌」的技能也会因此被触发（奥秘属于锦囊大类）。
++				//    ★ 信息脱敏：虚拟卡名字统一是「奥秘」，**不暴露真实卡名**；保留花色（suit）、
++				//      不带点数（number）—— 其他人只能"按花色猜"，无法用"花色+点数"锁定身份。
++				const vcard = { name: "yomi_aomi", isCard: true, suit: get.suit(card) };
++				const useEvent = player.useCard(vcard, player, false);
++				await useEvent;
++				// ② 被【无懈可击】抵消 → **牌直接进入弃牌堆**（用户设计 2026-10-04，归一于普通锦囊：
++				//    锦囊被无懈后其牌仍然进弃牌堆，只是效果不结算；弃牌堆公开 → 这张奥秘的身份随之暴露），
++				//    但不进行暗置（不会挂「奥」标记 / 观察者）。
++				//    旧的判定 `useResult.cancelled || useResult.result === false` 是错的：
++				//    `chooseUseTarget`/`useCard` 的 `result` 只反映"是否成功发起使用"，
++				//    被无懈后它照样是 `{bool:true}`，所以旧代码会把被无懈的奥秘照常暗置。
++				//    正确依据见 `wasNeutralized()`。
++				if (wasNeutralized(useEvent)) {
++					// 技能带 lose:false / discard:false，引擎不会自动弃置，所以此处显式送进弃牌堆
++					await player.loseToDiscardpile(card);
++					game.log(player, "暗置的奥秘被【无懈可击】抵消，进入弃牌堆");
++					return;
++				}
++				// ③ 没被无懈 → 正式登记并暗置：打上奥秘标记、记录、点亮「奥」标记、挂观察者技能
++				aomiRegister(player, card);
++				// 移入特殊区（技能带 lose: false，引擎不会把它弃置）
++				await player.lose(card, ui.special);
++				game.log(player, "把一张手牌暗置为奥秘");
++			},
++			ai: {
++				order: 12,
++				result: {
++					player: 1,
++				},
++			},
++		},
++
++		// 「奥」标记的显示载体：marktext 决定标记上显示的字（多张时数字自动显示在右下角）
++		yomi_mark_aomi: {
++			charlotte: true,
++			marktext: "奥",
++			intro: {
++				name: "奥秘",
++				// ★ 信息脱敏：默认只暴露「数量 + 花色」，**不暴露是哪张奥秘**。
++				//   设计思想（用户定义）：奥秘可参与「花色」相关交互，但**不参与点数**相关交互 ——
++				//   否则"花色+点数"双重身份可直接锁定是哪张卡，破坏奥秘的不可知性与猜测乐趣。
++				//   注意：intro 是在**查看者的客户端**渲染的，因此用 `player === game.me` 判断"我是不是持有者"。
++				//
++				// mark：**点击「奥」标记时弹出的详情框**（引擎钩子：`get/index.js:5633` 的 mark 分支，
++				//   与本体标记技能「连接」`_sxrm_connect` 同款写法，`dialog.addAuto(cards)` 可直接展示真牌）。
++				//   持有者本人：列出每一张奥秘的**真实牌面**（牌名/花色/点数/卡图）+ 完整卡面说明；
++				//   其他人：仍然只看到「数量 + 花色」，保持不可知性。
++				mark(uiintro, storage, player) {
++					const cards = (player && player.storage && player.storage.yomi_aomi_cards) || [];
++					if (!cards.length) {
++						return "没有暗置的奥秘";
++					}
++					if (player === game.me) {
++						uiintro.addText(`你暗置的奥秘 ${cards.length} 张（仅你可见）：`);
++						// 展示真实牌面
++						uiintro.addAuto(cards);
++						// 逐张附上完整卡面说明，方便回忆各自的效果
++						for (const card of cards) {
++							const info = lib.translate[`${card.name}_info`] || "";
++							uiintro.addText(`【${get.translation(card.name)}】${info}`);
++						}
++						return false;
++					}
++					// 其他人：保持不可知性，只给「数量 + 花色」
++					const suits = cards.map(card => get.translation(get.suit(card))).join("、");
++					return `暗置的奥秘 ${cards.length} 张（花色：${suits}）`;
++				},
++				// content：技能面板 / 其它调用点的纯文本版（口径与 mark 一致）
++				content(storage, player) {
++					const cards = (player && player.storage && player.storage.yomi_aomi_cards) || [];
++					if (!cards.length) {
++						return "没有暗置的奥秘";
++					}
++					if (player === game.me) {
++						const names = cards.map(card => `${get.translation(card.name)}（${get.translation(get.suit(card))}）`).join("、");
++						return `你暗置的奥秘 ${cards.length} 张：${names}`;
++					}
++					const suits = cards.map(card => get.translation(get.suit(card))).join("、");
++					return `暗置的奥秘 ${cards.length} 张（花色：${suits}）`;
++				},
++			},
++		},
++
++		// 【应对】暗置入口（卡包级**全局技能**，同 yomi_aomi_use 思路）：
++		// 出牌阶段，选一张手里的应对牌，暗置到特殊区；同一角色最多 1 张。
++		yomi_respond_use: {
++			enable: "phaseUse",
++			discard: false,
++			lose: false,
++			filter(event, player) {
++				// ★ 数量限制：同时最多 1 张。
++				//   v0.27 自带修复：若「记录在、观察者不在」（说明上一次结算链异常中断），
++				//   就地把脏数据清掉，否则会出现「应对按钮凭空消失、再也挂不上」。
++				const hanging = player.storage.yomi_respond_cards;
++				if (hanging && hanging.length) {
++					// ★ 2026-10-06 修复「应对按钮凭空消失、再也挂不上」：
++					//   判定「这张应对是否真的还挂在身上」要**四个条件同时成立**，
++					//   而不是只看「观察者技能在不在」——
++					//   只要 记录 / 观察者 / 标记 / 牌的标记 任一缺失，就说明这套状态是脏数据，
++					//   立刻整体重置（否则会永久卡在「上限 1 张」的分支里，再也暗置不了）。
++					const card = hanging[0];
++					const valid =
++						player.hasSkill("yomi_respond_watch") &&
++						!!card &&
++						!!card.storage &&
++						card.storage.yomi_respond === true &&
++						player.countMark("yomi_mark_respond") > 0;
++					if (!valid) {
++						delete player.storage.yomi_respond_cards;
++						const n = player.countMark("yomi_mark_respond");
++						if (n > 0) {
++							player.removeMark("yomi_mark_respond", n);
++						}
++						player.removeSkill("yomi_respond_watch");
++						game.log(player, "的应对状态已重置（此前处于异常残留）");
++					} else {
++						return false;
++					}
++				}
++				return player.countCards("h", card => isRespondCard(card)) > 0;
++			},
++			filterCard(card, player) {
++				return isRespondCard(card);
++			},
++			position: "h",
++			selectCard: 1,
++			prompt: "选择一张要暗置的应对牌",
++			intro: {
++				name: "应对",
++				content: "出牌阶段，你可以暗置一张应对牌（同时至多 1 张）。其他角色以你为唯一目标使用牌时翻开并触发。",
++			},
++			async content(event, trigger, player) {
++				const card = event.cards[0];
++				if (!card) {
++					return;
++				}
++				await respondUse(player, card);
++			},
++			ai: {
++				order: 11,
++				result: { player: 1 },
++			},
++		},
++
++		// 「应」标记的显示载体：点击可查看（本人=真牌，其他人=数量+花色）
++		yomi_mark_respond: {
++			charlotte: true,
++			marktext: "应",
++			intro: {
++				name: "应对",
++				mark(uiintro, storage, player) {
++					const cards = (player && player.storage && player.storage.yomi_respond_cards) || [];
++					if (!cards.length) {
++						return "没有暗置的应对牌";
++					}
++					if (player === game.me) {
++						uiintro.addText("你暗置的应对牌（仅你可见）：");
++						uiintro.addAuto(cards);
++						for (const card of cards) {
++							uiintro.addText(`【${get.translation(card.name)}】${lib.translate[`${card.name}_info`] || ""}`);
++						}
++						return false;
++					}
++					const suits = cards.map(card => get.translation(get.suit(card))).join("、");
++					return `应对牌 ${cards.length} 张（花色：${suits}）`;
++				},
++				content(storage, player) {
++					const cards = (player && player.storage && player.storage.yomi_respond_cards) || [];
++					if (!cards.length) {
++						return "没有暗置的应对牌";
++					}
++					if (player === game.me) {
++						return `你暗置的应对牌：${cards.map(card => `【${get.translation(card.name)}】`).join("")}`;
++					}
++					const suits = cards.map(card => get.translation(get.suit(card))).join("、");
++					return `应对牌 ${cards.length} 张（花色：${suits}）`;
++				},
++			},
++		},
++
++		// 【应对】的持续检测器（玩家私有技能，暗置时挂上、结算后摘掉）：
++		// 其他角色以你为**唯一目标**使用一张牌时触发。
++		yomi_respond_watch: {
++			forced: true,
++			charlotte: true,
++			popup: false,
++			trigger: { global: "useCardToTargeted" },
++			filter(event, player) {
++				// ★ v0.29：**结算锁**——同一张应对在自己结算期间不能再被新牌重复触发，
++				//   否则会 A应对→反制杀→B应对→反制杀→A应对（它还没响应完）……无限递归。
++				if (player.storage.yomi_respond_locked) {
++					return false;
++				}
++				const cards = player.storage.yomi_respond_cards;
++				if (!cards || !cards.length) {
++					return false;
++				}
++				if (event.player === player) {
++					return false; // 只响应**其他角色**
++				}
++				if (!event.card) {
++					return false;
++				}
++				const targets = event.targets || [];
++				if (targets.length !== 1 || targets[0] !== player) {
++					return false; // 必须是「以你为**唯一目标**」
++				}
++				// 同一张牌只响应一次
++				const done = player.storage.yomi_respond_done || [];
++				return !done.includes(event.parent ? event.parent.id : -1);
++			},
++			async content(event, trigger, player) {
++				const card = (player.storage.yomi_respond_cards || [])[0];
++				if (!card) {
++					return;
++				}
++				const useEvent = trigger.parent || trigger.getParent();
++				// ★ v0.27：进入应对结算链（配合 respondOfferAgain 的深度门限，防套娃）
++				yomiRespondDepth++;
++				try {
++					// ★ v0.29：上锁（在 finally 里解锁），保证「同一张应对在本次结算中只触发一次」
++					player.storage.yomi_respond_locked = true;
++				// 记账：这张牌不再重复触发
++				player.storage.yomi_respond_done = (player.storage.yomi_respond_done || []).concat([useEvent.id]);
++				// ① 翻开（公开，但此刻**还不进弃牌堆**）
++				respondReveal(player, card);
++				// ② 分流：对方这张牌是「伤害类」还是「非伤害类」
++				const info = lib.card[card.name] || {};
++				const isDamage = !!get.tag(trigger.card, "damage");
++				game.log(player, "的应对牌响应了", isDamage ? "伤害类牌" : "非伤害类牌", trigger.card);
++				// 分支展示（人物图 + 「应对伤害/非伤害」）：以**卡面书写顺序**为准 ——
++				//   第一个应对 → 展示持有者；第二个应对 → 展示触发者
++				const firstBranch = info.yomiRespondFirst || "damage";
++				const isFirst = (isDamage && firstBranch === "damage") || (!isDamage && firstBranch === "other");
++				respondShowBranch(player, useEvent.player, isFirst, isDamage);
++				if (isDamage && typeof info.yomiRespondDamage === "function") {
++					await info.yomiRespondDamage(useEvent, player);
++				} else if (!isDamage && typeof info.yomiRespondOther === "function") {
++					await info.yomiRespondOther(useEvent, player);
++				}
++				// ③ 结算完成 → 进弃牌堆 + 清理
++				respondFinish(player, card);
++				// ④ 手里还有应对牌 → 可以立即再暗置一张
++				await respondOfferAgain(player);
++				} finally {
++					// 无论分支是否抛错都要退栈，避免深度泄漏导致永远禁止再暗置
++					yomiRespondDepth--;
++					delete player.storage.yomi_respond_locked;
++				}
++			},
++		},
++
++		// 「令此伤害减半」等伤害修正的载体（应对牌持有者在被伤害时结算）
++		yomi_respond_damage: {
++			forced: true,
++			charlotte: true,
++			silent: true, // ★ v0.30：避免与同优先级的其它技能触发时弹「选择下一个触发的技能」
++			popup: false,
++			trigger: { player: ["damageBegin2"], global: ["useCardAfter"] },
++			filter(event, player) {
++				const mods = player.storage.yomi_respond_mods;
++				if (!mods || !mods.length) {
++					return false;
++				}
++				if (event.name === "useCardAfter") {
++					return mods.some(mod => mod.useId === event.id);
++				}
++				return mods.some(mod => mod.card === event.card && mod.source === event.source);
++			},
++			async content(event, trigger, player) {
++				let mods = player.storage.yomi_respond_mods || [];
++				if (trigger.name === "useCardAfter") {
++					// 触发牌已结算完毕却仍未造成伤害 → 丢弃过期修正
++					mods = mods.filter(mod => mod.useId !== trigger.id);
++				} else {
++					const idx = mods.findIndex(mod => mod.card === trigger.card && mod.source === trigger.source);
++					if (idx >= 0) {
++						mods.splice(idx, 1)[0].fn(trigger);
++					}
++				}
++				if (mods.length) {
++					player.storage.yomi_respond_mods = mods;
++				} else {
++					delete player.storage.yomi_respond_mods;
++					player.removeSkill("yomi_respond_damage");
++				}
++			},
++		},
++
++		// 冰雹的「本回合至少再使用一张牌」限制载体（加在**对方**身上）
++		yomi_bingbao_limit: {
++			forced: true,
++			charlotte: true,
++			silent: true,
++			popup: false,
++			trigger: { player: "useCard" },
++			filter(event, player) {
++				return typeof player.storage.yomi_bingbao_allow === "number";
++			},
++			async content(event, trigger, player) {
++				if (player.storage.yomi_bingbao_allow <= 0) {
++					trigger.cancel();
++					game.log(player, "受【冰雹】限制，本回合不能再使用牌");
++				} else {
++					player.storage.yomi_bingbao_allow--;
++				}
++			},
++		},
++
++		// 暗突袭那一张【杀】的载体：伤害+1 / 「需两张【闪】」/ 「造成濒死」追踪（供原牌失效判定）
++		yomi_antuixi_sha_buff: {
++			forced: true,
++			charlotte: true,
++			silent: true, // ★ v0.30：与 yomi_vampire_buff 同优先级同时触发 → 不标 silent 会弹技能选择框（已踩）
++			popup: false,
++			trigger: { player: ["useCardToPlayered", "useCardAfter"], source: ["damageBegin1", "damageAfter"], global: "dying" },
++			filter(event, player) {
++				if (event.name === "dying") {
++					// 「造成濒死」判定：濒死者正好是这次反击的目标，且伤害来源是我们自己
++					return (
++						!!player.storage.yomi_antuixi_bonus &&
++						event.player === player.storage.yomi_antuixi_target &&
++						(!event.source || event.source === player)
++					);
++				}
++				if (event.name === "damageAfter") {
++					// 兜底通道（见下方 content 的 damageAfter 分支）
++					return !!player.storage.yomi_antuixi_bonus && event.player === player.storage.yomi_antuixi_target;
++				}
++				if (!player.storage.yomi_antuixi_bonus || !event.card || get.name(event.card) !== "sha") {
++					return false;
++				}
++				if (event.name === "useCardToPlayered") {
++					return !event.getParent()?.directHit.includes(event.target);
++				}
++				return true;
++			},
++			async content(event, trigger, player) {
++				if (trigger.name === "useCardToPlayered") {
++					// 「需两张【闪】」：本体「无双」同款写法
++					const id = trigger.target.playerid;
++					const map = trigger.getParent()?.customArgs;
++					if (id != null) {
++						if (!map[id]) {
++							map[id] = {};
++						}
++						map[id].shanRequired = 2;
++					}
++					game.log(trigger.target, "需要连续打出两张【闪】才能抵消", trigger.card);
++					return;
++				}
++				if (trigger.name === "useCardAfter") {
++					delete player.storage.yomi_antuixi_bonus;
++					player.removeSkill("yomi_antuixi_sha_buff");
++					return;
++				}
++				if (trigger.name === "dying") {
++					// 记录「这张【杀】造成了濒死」——供暗突袭的「若造成濒死则原牌失效」判定
++					player.storage.yomi_antuixi_dying = true;
++					return;
++				}
++				if (trigger.name === "damageAfter") {
++					// ★ 兜底通道：伤害事件自带 `_dyinged` 标记（content.ts:12160 / 12279 在调用 dying() 前设置），
++					//   比 global:dying 钩子更可靠；即使目标随后被【桃】救回（hp>0）也算「曾进入濒死」。
++					if (trigger._dyinged && trigger.player === player.storage.yomi_antuixi_target) {
++						player.storage.yomi_antuixi_dying = true;
++					}
++					return;
++				}
++				trigger.num++;
++			},
++		},
++
++		// 「吸血」载体：你使用的**下一张伤害牌**造成伤害后回复等量体力
++		yomi_vampire_buff: {
++			forced: true,
++			charlotte: true,
++			silent: true,
++			popup: false,
++			trigger: { player: "useCard", source: "damageAfter" },
++			filter(event, player) {
++				if (event.name === "useCard") {
++					return !!player.storage.yomi_vampire_pending && !!get.tag(event.card, "damage");
++				}
++				return !!player.storage.yomi_vampire_card && event.card === player.storage.yomi_vampire_card;
++			},
++			async content(event, trigger, player) {
++				if (trigger.name === "useCard") {
++					player.storage.yomi_vampire_card = trigger.card;
++					delete player.storage.yomi_vampire_pending;
++					return;
++				}
++				const num = trigger.num;
++				delete player.storage.yomi_vampire_card;
++				player.removeSkill("yomi_vampire_buff");
++				if (num > 0) {
++					await player.recover(num);
++					game.log(player, "吸血回复", num, "点体力");
++				}
++			},
++		},
++
++		// 延迟执行载体：触发牌**结算完之后**再执行（冰雹「在之后」用）
++		yomi_respond_defer: {
++			forced: true,
++			charlotte: true,
++			silent: true,
++			popup: false,
++			trigger: { global: "useCardAfter" },
++			filter(event, player) {
++				return (player.storage.yomi_respond_defer || []).some(d => d.id === event.id);
++			},
++			async content(event, trigger, player) {
++				const list = player.storage.yomi_respond_defer || [];
++				const idx = list.findIndex(d => d.id === trigger.id);
++				if (idx < 0) {
++					return;
++				}
++				const defer = list.splice(idx, 1)[0];
++				if (list.length) {
++					player.storage.yomi_respond_defer = list;
++				} else {
++					delete player.storage.yomi_respond_defer;
++					player.removeSkill("yomi_respond_defer");
++				}
++				await defer.fn();
++			},
++		},
++
++		// 命苦啊的观察者：连续两个回合体力减少过 → 强制发动
++		yomi_mingku_watch: {
++			forced: true,
++			charlotte: true,
++			popup: false,
++			silent: true, // 条件未达成时不打日志（避免回合开始无条件弹「奥秘」）
++			trigger: { player: ["changeHp", "phaseBegin"] },
++			async content(event, trigger, player) {
++				if (trigger.name === "changeHp") {
++					// 本回合体力减少过（num 为负即减少）
++					if (trigger.num < 0) {
++						player.storage.yomi_mingku_lost = true;
++					}
++					return;
++				}
++				// 回合开始时：判断「连续两个回合都减少过」
++				const continuous = !!player.storage.yomi_mingku_prevLost && !!player.storage.yomi_mingku_lost;
++				// 滚动标记：本回合 → 上回合，并重置本回合
++				player.storage.yomi_mingku_prevLost = !!player.storage.yomi_mingku_lost;
++				delete player.storage.yomi_mingku_lost;
++				if (!continuous) {
++					return;
++				}
++				// 强制发动：先翻开奥秘（进弃牌堆），再结算效果
++				if (aomiActivate(player, "yomi_mingku")) {
++					await player.recover(2);
++				}
++			},
++		},
++
++		// 后发制人的观察者：自己成为其他角色【杀】的目标、且那张【杀】结算完毕后 → 强制发动。
++		// 反击的【杀】由 yomi_houfa_zhiren_buff 负责「伤害+1」与「需要连续两张【闪】才能抵消」（套用本体「无双」）。
++		yomi_houfa_zhiren_watch: {
++			forced: true,
++			charlotte: true,
++			popup: false,
++			trigger: { global: "useCardAfter" },
++			filter(event, player) {
++				if (event.player === player || !event.card) {
++					return false;
++				}
++				if (get.name(event.card) !== "sha") {
++					return false;
++				}
++				return (event.targets || []).includes(player);
++			},
++			async content(event, trigger, player) {
++				const source = trigger.player;
++				if (!source || !source.isAlive()) {
++					return;
++				}
++				if (!aomiActivate(player, "yomi_houfa_zhiren")) {
++					return;
++				}
++				// 视为对来源使用一张伤害+1、无距离与次数限制的普通【杀】
++				player.storage.yomi_houfa_bonus = true;
++				player.addTempSkill("yomi_houfa_zhiren_buff", { player: "phaseJieshuBegin" });
++				await player.useCard({ name: "sha" }, source).set("addCount", false);
++			},
++		},
++
++		// 后发制人那一张【杀】的载体（一次性），两件事一起做：
++		//   ① 让目标「需要连续打出两张【闪】才能抵消」—— 套用本体「无双」的写法
++		//      （character/standard/skill.js:2133-2169：在 useCard 事件的 customArgs[目标playerid].shanRequired 上登记）；
++		//   ② 该【杀】伤害 +1。
++		yomi_houfa_zhiren_buff: {
++			forced: true,
++			charlotte: true,
++			popup: false,
++			trigger: { source: "damageBegin1", player: ["useCardToPlayered", "useCardAfter"] },
++			filter(event, player) {
++				if (!player.storage.yomi_houfa_bonus || !event.card || get.name(event.card) !== "sha") {
++					return false;
++				}
++				if (event.name === "useCardToPlayered") {
++					// 若这张【杀】本身已「不可被响应」，就无需再要求两张【闪】
++					return !event.getParent()?.directHit.includes(event.target);
++				}
++				return true;
++			},
++			async content(event, trigger, player) {
++				if (trigger.name === "useCardToPlayered") {
++					// ★ 登记「需要两张【闪】」（本体「无双」同款写法）
++					const id = trigger.target.playerid;
++					const map = trigger.getParent()?.customArgs;
++					if (id != null) {
++						if (!map[id]) {
++							map[id] = {};
++						}
++						map[id].shanRequired = 2;
++					}
++					game.log(trigger.target, "需要连续打出两张【闪】才能抵消", trigger.card);
++					return;
++				}
++				if (trigger.name === "useCardAfter") {
++					// 这张【杀】结算完毕（无论是否被抵消），加成窗口结束并清理技能
++					delete player.storage.yomi_houfa_bonus;
++					player.removeSkill("yomi_houfa_zhiren_buff");
++					return;
++				}
++				// damageBegin1：伤害 +1
++				trigger.num++;
++			},
++		},
++
++		// 欢愉乘区载体：统计间隔期间的锦囊 / 基本牌，命中伤害牌时算乘区，并在伤害结算时翻倍。
++		yomi_huanyu_xiaodian_buff: {
++			forced: true,
++			charlotte: true,
++			popup: false,
++			silent: true,
++			trigger: { player: "useCard", source: "damageBegin2" },
++			filter(event, player) {
++				if (event.name === "damageBegin2") {
++					// 只修正「被记录的那张牌A」造成的伤害
++					return !!player.storage.yomi_huanyu_card && event.card === player.storage.yomi_huanyu_card;
++				}
++				return true;
++			},
++			async content(event, trigger, player) {
++				if (trigger.name === "useCard") {
++					const card = trigger.card;
++					if (!card) {
++						return;
++					}
++					// 已经锁定了一张"牌A"但还没造成伤害 → 它没打出伤害，本次窗口作废。
++					// 卡面：若该伤害最终被抵消，欢愉乘区的效果**不再延续**到后续的牌。
++					if (player.storage.yomi_huanyu_card) {
++						player.removeSkill("yomi_huanyu_xiaodian_buff");
++						return;
++					}
++					// ★ 判定「会造成伤害的牌」= 牌A —— 靠引擎标准标签 `ai.tag.damage`
++					//   （get.tag 只读 lib.card[name].ai.tag.damage，见 get/index.js:4670-4678）。
++					//   所有自制伤害卡已由 yomi_pack_core.js 末尾的 injectDamageTag() 统一补上该标签。
++					if (get.tag(card, "damage")) {
++						const targets = trigger.targets || [];
++						const trickCount = player.storage.yomi_huanyu_trick || 0;
++						const basicCount = player.storage.yomi_huanyu_basic || 0;
++						// 乘区至少为 1；此刻统计里**不含**牌A自身（它还没被计入），无需回减
++						const zone = Math.max(1, targets.length * (trickCount - basicCount) - 1);
++						player.storage.yomi_huanyu_zone = zone;
++						player.storage.yomi_huanyu_card = card;
++						game.log(player, "的", card, "进入欢愉乘区", zone);
++						return;
++					}
++					// 非伤害牌：计入"间隔期间"的统计（装备牌与其它类型不计入，不影响连续性）
++					const type = get.type(card);
++					if (type === "trick" || type === "delay") {
++						player.storage.yomi_huanyu_trick = (player.storage.yomi_huanyu_trick || 0) + 1;
++					} else if (type === "basic") {
++						player.storage.yomi_huanyu_basic = (player.storage.yomi_huanyu_basic || 0) + 1;
++					}
++					return;
++				}
++				// ★ damageBegin2：伤害数值**已全部计算完成、还没实际打上** —— 此刻把乘区乘上去
++				const zone = player.storage.yomi_huanyu_zone || 1;
++				if (zone > 1) {
++					trigger.num = trigger.num * zone;
++				}
++				delete player.storage.yomi_huanyu_zone;
++				delete player.storage.yomi_huanyu_card;
++				player.removeSkill("yomi_huanyu_xiaodian_buff");
++			},
++		},
++	},
++
++	translate: {
++		yomi_pack_reactive: "机变·应对与奥秘", // → lib.translate["yomi_pack_reactive_card_config"]
++
++		yomi_mingku: "命苦啊",
++		yomi_mingku_bg: "苦",
++		yomi_mingku_info: "奥秘：当你连续两个回合体力减少过时，强制发动，使你回复2点体力。",
++		yomi_mingku_watch: "奥秘",
++		yomi_mingku_watch_info: "你暗置的奥秘：会在某些时刻触发。",
++
++		yomi_houfa_zhiren: "后发制人",
++		yomi_houfa_zhiren_bg: "发",
++		yomi_houfa_zhiren_info:
++			"奥秘：当你成为其他角色【杀】的目标、且那张【杀】结算完毕后，强制发动。视为你对其使用一张伤害+1、无距离与次数限制、需要连续打出两张【闪】才能抵消的普通【杀】。",
++		yomi_houfa_zhiren_watch: "奥秘",
++		yomi_houfa_zhiren_watch_info: "你暗置的奥秘：会在某些时刻触发。",
++
++		// 暗置奥秘时使用的公共虚拟卡（字幕/日志里显示为「奥秘」，不暴露真实卡名）
++		yomi_aomi: "奥秘",
++		yomi_aomi_info: "一张暗置的奥秘（其他人只能看到它的花色）。",
++		yomi_houfa_zhiren_buff: "后发制人",
++		yomi_houfa_zhiren_buff_info: "你使用的下一张【杀】伤害+1。",
++
++		yomi_mark_aomi: "奥", // 「奥」标记的中文显示名
++
++		// 奥秘的暗置入口技能（卡包级，非玩家武将技能）
++		yomi_aomi_use: "奥秘",
++		yomi_aomi_use_info: "出牌阶段，你可以选择一张手牌中的奥秘牌，将其暗置（其他人看不到，武将牌旁出现「奥」标记）。暗置视为使用一张【奥秘】锦囊，可以被【无懈可击】响应——包括你自己；若被无懈，该牌直接进入弃牌堆（身份由此公开）。",
++
++		yomi_huanyu_xiaodian: "欢愉＊笑点",
++		yomi_huanyu_xiaodian_bg: "愉",
++		yomi_huanyu_xiaodian_info:
++			"出牌阶段，对自己使用。本回合你使用的下一张以你为伤害来源且会造成伤害的牌A，其伤害额外乘以「欢愉乘区」（至少为1）。欢愉乘区＝牌A的目标数×（此牌与牌A间隔期间你使用的锦囊牌数−基本牌数）−1。",
++
++		yomi_huanyu_xiaodian_buff: "欢愉＊笑点", // 卡包级辅助技能中文名（必填，否则弹窗显示英文 id）
++		yomi_huanyu_xiaodian_buff_info: "本回合你使用的下一张伤害牌，其伤害额外乘以欢愉乘区。",
++		yomi_respond: "应对",
++		yomi_respond_info: "一张暗置的应对牌（其他人只能看到它的花色）。",
++		yomi_respond_use: "应对",
++		yomi_respond_use_info:
++			"出牌阶段，你可以选择一张手牌中的应对牌，将其暗置（同时至多 1 张；其他人看不到是哪张，只能看到花色）。暗置视为使用一张【应对】锦囊，可以被【无懈可击】响应；若被无懈，该牌直接进入弃牌堆。当其他角色以你为唯一目标使用一张牌时，翻开该应对牌：按其是伤害类/非伤害类触发对应效果，结算后进入弃牌堆；此时若你手里还有应对牌，可以立即再暗置一张。",
++		yomi_mark_respond: "应",
++		yomi_mark_respond_info: "你暗置的应对牌。",
++		yomi_respond_watch: "应对",
++		yomi_respond_watch_info: "你暗置的应对牌：其他角色以你为唯一目标使用牌时触发。",
++		yomi_respond_damage: "应对",
++		yomi_respond_damage_info: "应对牌的伤害修正载体（内部技能）。",
++
++		yomi_xiadui: "吓退",
++		yomi_xiadui_bg: "退",
++		yomi_xiadui_info:
++			"应对：当其他角色以你为唯一目标使用牌时翻开。应对伤害：令此伤害减半（向下取整），然后你可以令来源弃置装备区内的一张牌。应对非伤害：无事发生。",
++
++		yomi_paomo_huanying: "泡沫幻影",
++		yomi_paomo_huanying_bg: "泡",
++		yomi_paomo_huanying_info:
++			"应对：当其他角色以你为唯一目标使用牌时翻开。应对伤害：令此伤害减半（向下取整），你可以将座次调整到任意其它两名角色之间。应对非伤害：无事发生。",
++
++		yomi_bingbao: "冰雹",
++		yomi_bingbao_bg: "雹",
++		yomi_bingbao_info:
++			"应对：当其他角色以你为唯一目标使用牌时翻开。应对非伤害：你弃一张牌，以使之失效。那之后，若本回合是其的回合，令其在本回合内至多再使用一张牌并受到1点伤害。应对伤害：你弃一张牌，以视为你在之后对其使用一张无距离次数限制的普通【杀】。",
++
++		yomi_dengjia_jiaohuan: "等价交换",
++		yomi_dengjia_jiaohuan_bg: "价",
++		yomi_dengjia_jiaohuan_info:
++			"应对：当其他角色以你为唯一目标使用牌时翻开。应对伤害：令此伤害减半（向下取整），使你使用的下一张伤害牌具有吸血。应对非伤害：无事发生。",
++
++		yomi_antuixi1: "暗突袭（弃1张）",
++		yomi_antuixi1_bg: "袭",
++		yomi_antuixi1_info:
++			"吸血。应对：当其他角色以你为唯一目标使用牌时翻开。应对非伤害：你弃一张手牌，以视为你对来源使用一张伤害+1、需要两张【闪】响应、无距离次数限制的普通【杀】。应对伤害：你弃一张手牌，以视为你对来源使用一张无距离次数限制的普通【杀】。",
++
++		yomi_antuixi2: "暗突袭（弃2张）",
++		yomi_antuixi2_bg: "袭",
++		yomi_antuixi2_info:
++			"吸血。应对：当其他角色以你为唯一目标使用牌时翻开。应对非伤害：你弃两张手牌，以视为你对来源使用一张伤害+1、需要两张【闪】响应、无距离次数限制的普通【杀】。应对伤害：你弃两张手牌，以视为你对来源使用一张无距离次数限制的普通【杀】。",
++
++		yomi_bingbao_limit: "冰雹",
++		yomi_bingbao_limit_info: "本回合内至多再使用一张牌。",
++		yomi_antuixi_sha_buff: "暗突袭",
++		yomi_antuixi_sha_buff_info: "你使用的这一张【杀】伤害+1、需要两张【闪】才能抵消。",
++		yomi_vampire_buff: "吸血",
++		yomi_vampire_buff_info: "你使用的下一张伤害牌造成伤害后，你回复等量体力。",
++		yomi_respond_defer: "应对",
++		yomi_respond_defer_info: "应对效果的延迟执行载体（内部技能）。",
++	},
++
++	// 勾选本包后，下列牌进入牌堆。
++	list: [
++		["club", 7, "yomi_mingku"], // 梅花 7（无色卡轮转全局第 20 位）
++		["heart", 8, "yomi_houfa_zhiren"], // 红桃 8（无色卡轮转全局第 21 位）
++		["diamond", 12, "yomi_huanyu_xiaodian"], // 方块 Q(12)（CSV 原值）
++		["diamond", 9, "yomi_xiadui"], // 方块 9（无色卡轮转全局第 22 位；CSV id=45 吓退）
++		["spade", 10, "yomi_paomo_huanying"], // 黑桃 10（轮转第 23 位；CSV id=27）
++		["club", 11, "yomi_bingbao"], // 梅花 11（轮转第 24 位；CSV id=28）
++		["heart", 12, "yomi_dengjia_jiaohuan"], // 红桃 12（轮转第 25 位；CSV id=29）
++		["diamond", 13, "yomi_antuixi1"], // 方块 13（轮转第 26 位；CSV id=43）
++		["spade", 1, "yomi_antuixi2"], // 黑桃 A(1)（轮转第 27 位；CSV id=44）
++	],
++};
++
++/**
++ * 把【奥秘】的暗置入口技能 `yomi_aomi_use` 注册成**全局技能**。
++ *
++ * 为什么必须注册：卡包的 `skill` 段只是把技能**定义**写进 `lib.skill`，**不会**让玩家"拥有"它 ——
++ *   玩家只拥有自己武将的技能。而奥秘的规则是「任何拿到奥秘牌的玩家都能把它暗置」，
++ *   所以必须让它成为全局技能（所有玩家都拥有），否则会出现"牌在手里变灰、技能栏里没有【奥秘】"。
++ *   卡包 skill 段不会自动加入 `lib.skill.global`（那由 game.addGlobalSkill / lib.skill.global.add 管理），
++ *   因此这里手动注册：用 setTimeout(0) 等引擎写完 `lib.skill` 之后再挂，并补挂一次以防时机问题（幂等）。
++ */
++function registerGlobalSkill(name) {
++	if (!lib.skill || !lib.skill[name]) {
++		return;
++	}
++	// ★ 用 game.addGlobalSkill：它除了加进 lib.skill.global，还会注册技能的 trigger
++	//   （lib.hook.globalskill，见 game/index.js:6316-6345）。对没有 trigger 的技能
++	//   （如本包的奥秘入口）效果相同，但统一走这条路径最稳。
++	if (typeof game.addGlobalSkill === "function") {
++		game.addGlobalSkill(name);
++		return;
++	}
++	const g = lib.skill.global;
++	if (g && typeof g.add === "function") {
++		g.add(name);
++	} else if (Array.isArray(g) && !g.includes(name)) {
++		g.push(name);
++	}
++}
++function registerAomiUseSkill() {
++	registerGlobalSkill("yomi_aomi_use");
++	// 「奥」标记的显示载体也必须是全局技能 —— 否则 player.addMark("yomi_mark_aomi") 没有对应技能，
++	// 标记（以及它的 intro）根本不会渲染出来（ECNU 独立审查指出）。
++	registerGlobalSkill("yomi_mark_aomi");
++}
++
++/**
++ * 【应对】的全局技能注册：暗置入口 `yomi_respond_use` 与「应」标记 `yomi_mark_respond`
++ * 必须让所有玩家都拥有，否则会出现“牌在手里点不动 / 标记不渲染”（同 yomi_aomi 的踩坑）。
++ */
++function registerRespondSkills() {
++	registerGlobalSkill("yomi_respond_use");
++	registerGlobalSkill("yomi_mark_respond");
++}
++// 多时间点尝试，覆盖各种初始化时序（重复注册无害）
++[0, 300, 1000, 3000].forEach(t =>
++	setTimeout(() => {
++		registerAomiUseSkill();
++		registerRespondSkills();
++	}, t)
++);
+diff --git a/apps/core/card/yomi_pack_sanguo.js b/apps/core/card/yomi_pack_sanguo.js
+new file mode 100644
+index 0000000..c092c93
+--- /dev/null
++++ b/apps/core/card/yomi_pack_sanguo.js
+@@ -0,0 +1,302 @@
++// @ts-nocheck
++/**
++ * 自制游戏卡 · 主题包 1「三国演义·正典」（包名 `yomi_pack_sanguo`，56 张归属 12 张）
++ *
++ * 结构依据：`卡牌实现方案.md` §一（卡包标准结构）、§七（游戏内勾选 / 单卡禁用）、§八（主题分包方案）。
++ * 加载链路：`game/package.js` 的 `card:` 段登记 → `init/index.ts:116-120` 进 `lib.config.all.cards`
++ *   → `init/index.ts:339-341` 动态 import 本文件 → `import.ts` 校验 `export const type === "card"`
++ *   → `loadCard()`（`init/loading.ts:11-96`）写入 `lib.card` / `lib.translate` / `lib.cardPack` / `lib.cardPackList`。
++ *
++ * 「游戏内能看到、能勾选、能单卡禁用」的三项硬条件（方案 §7.5）：
++ *   1) `export const type = "card"` + `export default {...}` ✅
++ *   2) 每张卡都要有 `translate[<卡id>_info]` —— 缺了不进 `lib.cardPack`，菜单里看不到、也无法禁用 ✅
++ *   3) `list` 正常填写 `[花色, 点数, 卡id]` —— 勾选本包后牌才进牌堆（`loading.ts:40`、`:57`） ✅
++ * 包名**不得**带 `mode_` 前缀，否则会被当作模式专属包而**失去单卡禁用能力**（`cardPackMenu.js:270-272`）。
++ *
++ * 花色点数依据：
++ *   - CSV 中本来就有花色点数的卡（火攻 / 桃园结义）沿用原值，**不参与轮转分配**；
++ *   - 无色卡按「花色点数轮转发放」规则发放实体花色与点数（规则与游标见工作区根目录 `花色点数分配记录.md`）。
++ *   本包不再使用引擎的 `"none"` 无色。
++ *
++ * 本包内容（累计 4 张）：
++ *   A 档（第一批）：
++ *   - `yomi_huogong3`      火攻（改）     CSV id=17，目标展示 2 张手牌 → 你弃 1~2 张同花色**手牌** → 等量火焰伤害；
++ *   - `yomi_taoyuanjieyi2` 桃园结义（改） CSV id=18，由旧试点包 `yomi_cards` 迁入。
++ *   B 档（第二批）：
++ *   - `yomi_caoshibingfa_qingchengerchu` 曹氏兵法：倾城而出 CSV id=6，宝物；
++ *   - `yomi_dangtou_banghe`              当头棒喝        CSV id=25，视为使用【杀】的基本牌。
++ *
++ * 注：原 `yomi_huogong2`（CSV id=16 的无效果版火攻）已按用户要求**删除**，不再属于本包。
++ *
++ * 命名依据：`名称登记表.md`（一律 `yomi_` 前缀）。显示名与本体重名者（火攻 / 桃园结义）加「（改）」区分。
++ */
++import { lib, game, ui, get, ai, _status } from "noname";
++
++export const type = "card";
++
++export default {
++	name: "yomi_pack_sanguo",
++
++	card: {
++		// 曹氏兵法：倾城而出：CSV id=6。宝物（equip5）。
++		// 卡面：你使用的牌不可被响应、不会被无效。弃牌阶段，弃掉你所有的手牌。结束阶段，若你有手牌，本牌弃置。
++		// 实现：装备牌 + 卡包级技能（装备技能随装备区状态自动生效 / 失效）。
++		yomi_caoshibingfa_qingchengerchu: {
++			type: "equip",
++			subtype: "equip5",
++			skills: ["yomi_caoshibingfa_qingchengerchu_skill"],
++		},
++
++		// 当头棒喝：CSV id=25。视为你对攻击范围内的一名其它角色使用一张计入次数的普通【杀】；
++		// 若其在本回合已使用或打出过两种或以上不同类型的牌（基本 / 锦囊 / 装备），
++		// 此【杀】改为不计入次数且伤害变为三倍。
++		// ⚠️ 实现偏差：「不计入次数」在引擎里需要干预 useCard 的计数参数，本版先实现「伤害三倍」，
++		//     计数暂由引擎默认处理，待实机验证后再补。
++		yomi_dangtou_banghe: {
++			type: "basic",
++			enable: true,
++			selectTarget: 1,
++			filterTarget(card, player, target) {
++				return target !== player && player.inRange(target);
++			},
++			async content(event, trigger, player) {
++				const target = event.target;
++				// 统计目标本回合「使用过」与「打出过」的牌类型
++				const typeSet = new Set();
++				for (const evt of target.getHistory("useCard")) {
++					if (evt.card) {
++						typeSet.add(get.type(evt.card));
++					}
++				}
++				for (const evt of target.getHistory("respond")) {
++					if (evt.card) {
++						typeSet.add(get.type(evt.card));
++					}
++				}
++				const strong = typeSet.size >= 2;
++				if (strong) {
++					// 让这一张【杀】的伤害变为三倍（一次性加成，结算后自行移除）
++					player.storage.yomi_dangtou_banghe_triple = true;
++					player.addTempSkill("yomi_dangtou_banghe_buff", { player: "phaseUseEnd" });
++				}
++				// 视为使用一张普通【杀】；满足条件时改为「不计入次数」
++				// （本体写法：在 useCard 事件上设 addCount = false，见 character/key/skill.js:263-266）
++				const useEvent = player.useCard({ name: "sha" }, target);
++				if (strong) {
++					useEvent.addCount = false;
++					game.log(useEvent.card, "不计入次数");
++				}
++				await useEvent;
++			},
++			ai: {
++				result: {
++					// AI：视为对目标使用【杀】（条件满足时伤害三倍），只对敌方角色使用
++					target(player, target) {
++						return get.damageEffect(target, player, player);
++					},
++				},
++			},
++		},
++
++		// 火攻（改）：CSV id=17。目标展示 2 张手牌，你弃置 1~2 张与之花色相同的牌，弃几张造成几点火焰伤害。
++		yomi_huogong3: {
++			type: "trick",
++			enable: true,
++			cardnature: "fire", // 火属性牌（本体 huogong 同样写 cardnature: "fire"）
++			wuxieable: false, // 方案 §4.3：此牌不可被【无懈可击】响应
++			selectTarget: 1,
++			filterTarget(card, player, target) {
++				return target !== player && target.countCards("h") > 0;
++			},
++			async content(event, trigger, player) {
++				const target = event.target;
++				const count = Math.min(2, target.countCards("h"));
++				if (!count) {
++					return;
++				}
++				// 第一步：目标展示 2 张手牌（不足 2 张则全部展示）
++				const showResult = await target
++					.chooseCard({
++						position: "h",
++						selectCard: [count, count],
++						forced: true,
++						prompt: `火攻：请展示${count}张手牌`,
++					})
++					.forResult();
++				const cards = showResult.cards || [];
++				if (!cards.length) {
++					return;
++				}
++				await target.showCards(cards, "火攻：展示的牌");
++				const suits = [];
++				for (const card of cards) {
++					const suit = get.suit(card);
++					if (suit && !suits.includes(suit)) {
++						suits.push(suit);
++					}
++				}
++				// 第二步：你可以弃置 1~2 张与展示牌花色相同的牌（无可用牌则跳过）
++				if (!player.countCards("h", card => suits.includes(get.suit(card)))) {
++					return;
++				}
++				const discardResult = await player
++					.chooseToDiscard({
++						position: "h",
++						selectCard: [1, 2],
++						filterCard: card => suits.includes(get.suit(card)),
++						prompt: "火攻：请弃置1至2张与展示牌花色相同的牌，每弃置1张对其造成1点火焰伤害",
++						ai: card => 8 - get.value(card),
++					})
++					.forResult();
++				const num = discardResult.bool ? (discardResult.cards || []).length : 0;
++				// 第三步：按弃置数量造成等量火焰伤害
++				if (num > 0) {
++					await target.damage(num, player, "fire");
++				}
++			},
++			ai: {
++				tag: { damage: 1 },
++				result: {
++					// AI：只把敌方角色选为目标（火焰伤害对敌人是负收益）
++					target(player, target) {
++						return get.damageEffect(target, player, player, "fire");
++					},
++				},
++			},
++		},
++
++		// 桃园结义（改）：CSV id=18。由旧试点包 `yomi_cards` 原样迁入（仅去掉 mode 白名单）。
++		yomi_taoyuanjieyi2: {
++			type: "trick",
++			enable: true,
++			wuxieable: false, // standard.js:4239 _wuxie filter：wuxieable === false 直接不弹无懈
++			selectTarget: -1, // 目标为全体角色（含使用者），参照本体 taoyuan standard.js:1265-1280
++			filterTarget: () => true,
++			multitarget: true, // content 只跑一次，用 event.targets 拿到全部目标（content.ts:10401）
++			async content(event, trigger, player) {
++				const all = event.targets.slice();
++				// 第一步：由使用者指定「回复 2 点」的角色集合（0 名也允许，此时所有人回复 1 点）
++				const result = await player
++					.chooseTarget({
++						prompt: "桃园结义：请选择回复2点体力的角色",
++						selectTarget: [0, all.length],
++						filterTarget: (card, player, target) => all.includes(target),
++						ai(target) {
++							const me = get.player();
++							if (!me || target.isHealthy()) {
++								return 0;
++							}
++							return Math.max(0, get.attitude(me, target)) + 1;
++						},
++					})
++					.forResult();
++				const chosen = result.bool ? result.targets || [] : [];
++				for (const target of all) {
++					// recover 会自行按体力上限截断；满血角色 num <= 0 时安全空转（content.ts:12229-12249）
++					await target.recover(chosen.includes(target) ? 2 : 1);
++				}
++			},
++		},
++	},
++
++	skill: {
++		// 曹氏兵法：倾城而出的装备技能。
++		yomi_caoshibingfa_qingchengerchu_skill: {
++			forced: true,
++			charlotte: true,
++			trigger: { player: ["useCard1", "phaseDiscardBegin", "phaseJieshuBegin"] },
++			async content(event, trigger, player) {
++				if (trigger.name === "useCard1") {
++					// 你使用的牌不可被响应：给这张牌加上"直接命中"标记（本体同类写法见 sp/skill.js:26418）
++					if (trigger.directHit && trigger.card) {
++						trigger.directHit.addArray(game.players);
++					}
++					// 不会被无效：给这张**牌实例**打上 nowuxie 标记。
++					// 依据：standard.js:4230 的 _wuxie 过滤器首先检查 `event.card.storage.nowuxie`，命中即不开无懈窗口；
++					// 而 `card.wuxieable = false` 只改实例属性，判定读的是 `get.info(card)`（卡定义），故无效。
++					if (trigger.card) {
++						if (!trigger.card.storage) {
++							trigger.card.storage = {};
++						}
++						trigger.card.storage.nowuxie = true;
++					}
++					return;
++				}
++				if (trigger.name === "phaseDiscardBegin") {
++					// 弃牌阶段，弃掉你所有的手牌：把本阶段的弃牌数设为手牌数
++					trigger.num = player.countCards("h");
++					return;
++				}
++				// 结束阶段，若你有手牌，本牌弃置
++				if (player.countCards("h") > 0) {
++					const equip = player.getCards("e", card => card.name === "yomi_caoshibingfa_qingchengerchu");
++					if (equip.length) {
++						await player.discard(equip);
++					}
++				}
++			},
++		},
++
++		// 当头棒喝的三倍伤害载体（一次性）。
++		yomi_dangtou_banghe_buff: {
++			forced: true,
++			charlotte: true,
++			popup: false,
++			trigger: { source: "damageBegin1", player: "useCardAfter" },
++			filter(event, player) {
++				if (event.name === "useCardAfter") {
++					// 这张【杀】结算完毕（无论是否造成伤害），加成窗口即告结束
++					return !!event.card && get.name(event.card) === "sha";
++				}
++				return !!player.storage.yomi_dangtou_banghe_triple && !!event.card && get.name(event.card) === "sha";
++			},
++			async content(event, trigger, player) {
++				if (trigger.name === "useCardAfter") {
++					// 清理：避免目标出【闪】抵消时加成残留到本回合结束、误加成下一张【杀】
++					delete player.storage.yomi_dangtou_banghe_triple;
++					player.removeSkill("yomi_dangtou_banghe_buff");
++					return;
++				}
++				trigger.num = trigger.num * 3;
++				delete player.storage.yomi_dangtou_banghe_triple;
++			},
++		},
++	},
++
++	translate: {
++		yomi_pack_sanguo: "三国演义·正典", // → lib.translate["yomi_pack_sanguo_card_config"]，卡牌菜单标题
++
++		yomi_caoshibingfa_qingchengerchu: "曹氏兵法：倾城而出",
++		yomi_caoshibingfa_qingchengerchu_bg: "兵",
++		yomi_caoshibingfa_qingchengerchu_info:
++			"锁定技，你使用的牌不可被响应、不会被无效。弃牌阶段，你弃置所有手牌。结束阶段，若你有手牌，弃置此牌。",
++		yomi_caoshibingfa_qingchengerchu_skill: "曹氏兵法：倾城而出",
++		yomi_caoshibingfa_qingchengerchu_skill_info:
++			"锁定技，你使用的牌不可被响应、不会被无效；弃牌阶段你弃置所有手牌；结束阶段若你有手牌则弃置此牌。",
++
++		yomi_dangtou_banghe: "当头棒喝",
++		yomi_dangtou_banghe_bg: "喝",
++		yomi_dangtou_banghe_info:
++			"出牌阶段，对攻击范围内的一名其他角色使用。视为你对其使用一张计入次数的普通【杀】；若其本回合已使用或打出过两种或以上不同类型的牌（基本、锦囊、装备），此【杀】伤害变为三倍。",
++		yomi_dangtou_banghe_buff: "当头棒喝",
++		yomi_dangtou_banghe_buff_info: "你使用的下一张【杀】伤害变为三倍。",
++
++		yomi_huogong3: "火攻（改）",
++		yomi_huogong3_bg: "焚",
++		yomi_huogong3_info:
++			"出牌阶段，对一名有手牌的其他角色使用。该角色展示2张手牌（不足2张则全部展示），然后你可以弃置1至2张与其展示牌花色相同的手牌，每弃置1张对其造成1点火焰伤害。此牌不能被【无懈可击】响应。",
++
++		yomi_taoyuanjieyi2: "桃园结义（改）",
++		yomi_taoyuanjieyi2_bg: "园",
++		yomi_taoyuanjieyi2_info:
++			"出牌阶段，对所有角色使用。你指定任意名角色，这些角色回复2点体力，其余角色各回复1点体力。此牌不能被【无懈可击】响应。",
++	},
++
++	// 勾选本包后，下列牌进入牌堆（`loading.ts:40`、`:57`）。
++	list: [
++		["spade", 7, "yomi_caoshibingfa_qingchengerchu"], // 黑桃 7（无色卡轮转全局第 7 位）
++		["heart", 9, "yomi_dangtou_banghe"], // 红桃 9（无色卡轮转全局第 9 位）
++		["heart", 11, "yomi_huogong3"], // 红桃 J(11)（CSV id=17 原值）
++		["club", 12, "yomi_taoyuanjieyi2"], // 梅花 Q
++	],
++};

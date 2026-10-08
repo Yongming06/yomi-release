@@ -1,0 +1,89 @@
+From 82fec2781ad31397f40e43710385cd30acb73ad8 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 21:43:14 +0800
+Subject: [PATCH 33/37] =?UTF-8?q?fix(dev):=20=E8=87=AA=E5=8A=A8=E5=AF=B9?=
+ =?UTF-8?q?=E5=B1=80=20v7=E2=80=94=E2=80=94=E4=BF=AE=E3=80=8C=E4=B8=80?=
+ =?UTF-8?q?=E5=B1=80=E7=BB=93=E6=9D=9F=E5=90=8E=E5=8D=A1=E5=9C=A8=E6=88=98?=
+ =?UTF-8?q?=E6=96=97=E5=A4=B1=E8=B4=A5=E7=95=8C=E9=9D=A2=E3=80=8D=EF=BC=9A?=
+ =?UTF-8?q?ensureIngame=20=E9=9C=80=E6=8E=92=E9=99=A4=E3=80=8C=E6=9C=AC?=
+ =?UTF-8?q?=E5=B1=80=E5=B7=B2=E7=BB=93=E6=9D=9F=E3=80=8D=EF=BC=88=E7=BB=93?=
+ =?UTF-8?q?=E6=9D=9F=E5=90=8E=20game.me/players=20=E4=BB=8D=E5=9C=A8?=
+ =?UTF-8?q?=EF=BC=8C=E5=8E=9F=E5=88=A4=E6=96=AD=E8=AF=AF=E4=BB=A5=E4=B8=BA?=
+ =?UTF-8?q?=E8=BF=98=E5=9C=A8=E5=B1=80=E5=86=85=EF=BC=89=EF=BC=9BourHeroes?=
+ =?UTF-8?q?=20=E6=94=BE=E5=AE=BD=E4=B8=BA=E6=89=AB=E6=8F=8F=E5=90=AB=20yom?=
+ =?UTF-8?q?i=20=E7=9A=84=E6=AD=A6=E5=B0=86=E5=8C=85=E9=94=AE=EF=BC=9B?=
+ =?UTF-8?q?=E5=BF=83=E8=B7=B3=E5=8A=A0=20over=3D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/_yomi_devtools.js | 25 ++++++++++++++++++++-----
+ 1 file changed, 20 insertions(+), 5 deletions(-)
+
+diff --git a/apps/core/_yomi_devtools.js b/apps/core/_yomi_devtools.js
+index 3196271..33e0df4 100644
+--- a/apps/core/_yomi_devtools.js
++++ b/apps/core/_yomi_devtools.js
+@@ -167,17 +167,30 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 	}
+ 
+ 	/* ---------- 我们包里的武将（轮换用） ---------- */
++	function ourPackKeys() {
++		const keys = [];
++		try {
++			for (const k of Object.keys(lib.characterPack || {})) {
++				if (/yomi/i.test(k)) keys.push(k);
++			}
++		} catch (e) {}
++		return keys;
++	}
+ 	function ourHeroes() {
+ 		const out = [];
+ 		try {
+-			for (const pack of OUR_PACKS) {
++			// 先按固定包名，再扫描所有含 yomi 的包（实机反馈：固定包名曾一个都没命中）
++			const keys = OUR_PACKS.concat(ourPackKeys().filter(k => !OUR_PACKS.includes(k)));
++			for (const pack of keys) {
+ 				const p = lib.characterPack && lib.characterPack[pack];
+ 				if (!p) continue;
+ 				let list;
+ 				if (p.character) list = Object.keys(p.character);
+ 				else if (Array.isArray(p)) list = p;
+ 				else list = Object.keys(p);
+-				for (const id of list) if (lib.character && lib.character[id]) out.push(id);
++				for (const id of list) {
++					if (lib.character && lib.character[id] && !out.includes(id)) out.push(id);
++				}
+ 			}
+ 		} catch (e) {}
+ 		return out;
+@@ -221,7 +234,9 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 
+ 	/* ---------- 阶段 B：开局（轮换武将 + continue_name + directstart） ---------- */
+ 	async function ensureIngame(st, label) {
+-		if (ingame() && aliveCount() > 1) return true;
++		// ⚠️ 必须排除「本局已结束」：结束后 game.me/game.players 依然存在，
++		//    否则会误判成「还在对局中」→ 直接 return → 停在「战斗失败/重新开始」界面不动 ✗
++		if (ingame() && aliveCount() > 1 && !gameOver()) return true;
+ 		st.reloads = (st.reloads || 0) + 1;
+ 		if (st.reloads > 5) {
+ 			await appendText(REPORT, "  ❌ " + label + " 连续 " + (st.reloads - 1) + " 次未进对局，放弃。\n" + window.__yomiSnapshot() + "\n");
+@@ -272,7 +287,7 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 			const el = Math.round((Date.now() - mt) / 1000);
+ 			if (el - lastBeat >= 30) {
+ 				lastBeat = el;
+-				await appendText(REPORT, "    · 心跳 " + el + "s 存活=" + aliveCount() + " auto=" + (_status ? _status.auto : "?") + " imchoosing=" + !!(_status && _status.imchoosing) + " 事件=" + evtChain() + "\n");
++				await appendText(REPORT, "    · 心跳 " + el + "s 存活=" + aliveCount() + " auto=" + (_status ? _status.auto : "?") + " over=" + !!(_status && _status.over) + " imchoosing=" + !!(_status && _status.imchoosing) + " 事件=" + evtChain() + "\n");
+ 			}
+ 			if (!ingame()) {
+ 				const hit = driveStartMenu(st.hero);
+@@ -374,7 +389,7 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 		const st = { total: count, done: 0, t0: Date.now() };
+ 		saveState(st);
+ 		await appendText(REPORT, "\n===== AUTO MATCH START " + now() + " target " + count + " matches =====\n");
+-		await appendText(REPORT, "  [环境] url=" + location.href + " 引擎就绪=" + ready() + " 武将库=" + ourHeroes().length + "\n");
++		await appendText(REPORT, "  [环境] url=" + location.href + " 引擎就绪=" + ready() + " 武将库=" + ourHeroes().length + " 含yomi的包=" + ourPackKeys().join(",") + "\n");
+ 		return batchMain(opts.verbose !== false);
+ 	};
+ 

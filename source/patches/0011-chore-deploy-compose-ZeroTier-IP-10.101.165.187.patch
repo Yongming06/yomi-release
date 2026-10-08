@@ -1,0 +1,32 @@
+From 540f689aeda8ea06822acea9e9f36b866f438ae3 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Wed, 7 Oct 2026 21:48:32 +0800
+Subject: [PATCH 11/37] =?UTF-8?q?chore(deploy):=20compose=20=E7=AB=AF?=
+ =?UTF-8?q?=E5=8F=A3=E6=94=B9=E4=B8=BA=E5=90=8C=E6=97=B6=E7=BB=91=E5=9B=9E?=
+ =?UTF-8?q?=E7=8E=AF=20+=20ZeroTier=20=E7=BD=91=E5=8D=A1=20IP=EF=BC=8810.1?=
+ =?UTF-8?q?01.165.187=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ deploy/docker-compose.yml | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/deploy/docker-compose.yml b/deploy/docker-compose.yml
+index 5188ebd..4248329 100644
+--- a/deploy/docker-compose.yml
++++ b/deploy/docker-compose.yml
+@@ -28,9 +28,11 @@ services:
+         image: noname-online:latest
+         container_name: noname_online
+         ports:
+-            # 只绑回环：局域网访问不到；隧道/反代在本机所以够用
++            # 只绑「回环 + ZeroTier 网卡」：本机与 ZeroTier 网络内可访问，局域网访问不到
+             - "127.0.0.1:8089:8089"
+             - "127.0.0.1:8082:8082"
++            - "10.101.165.187:8089:8089"
++            - "10.101.165.187:8082:8082"
+         volumes:
+             - ../dist:/app/dist:ro
+         environment:

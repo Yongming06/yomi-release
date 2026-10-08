@@ -1,0 +1,72 @@
+From 7c7b70b783c1e389c4aa7277d180d358e0b54c20 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 18:43:14 +0800
+Subject: [PATCH 20/37] =?UTF-8?q?fix(genshin):=20=E9=AB=98=E5=A4=A9?=
+ =?UTF-8?q?=E5=85=89=E7=8E=AF=E6=94=B6=E5=9B=9E=E6=94=B9=E7=94=A8=E7=AC=AC?=
+ =?UTF-8?q?=E4=B8=89=E5=8F=82=20+=20=E8=BD=BD=E4=BD=93=E8=87=AA=E6=A3=80?=
+ =?UTF-8?q?=E5=9B=9E=E6=94=B6=E2=80=94=E2=80=94=E4=BF=AE=E3=80=8C=E5=B7=B4?=
+ =?UTF-8?q?=E5=B7=B4=E6=89=98=E6=96=AF=E6=AD=BB=E5=90=8E=E5=B1=9E=E6=80=A7?=
+ =?UTF-8?q?=E3=80=90=E6=9D=80=E3=80=91=E4=BB=8D=E6=8C=87=E4=B8=8D=E5=88=B0?=
+ =?UTF-8?q?=E4=BA=BA=E3=80=8D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .../core/character/yomi_char_genshin/skill.js | 23 +++++++++++++++----
+ 1 file changed, 19 insertions(+), 4 deletions(-)
+
+diff --git a/apps/core/character/yomi_char_genshin/skill.js b/apps/core/character/yomi_char_genshin/skill.js
+index a0756ef..0fcc5e8 100644
+--- a/apps/core/character/yomi_char_genshin/skill.js
++++ b/apps/core/character/yomi_char_genshin/skill.js
+@@ -448,15 +448,19 @@ const skills = {
+ 		// ⚠️ 引擎没有 `revive` 触发名（revive 事件不 trigger("revive")，player.revive() 多数也不建事件），
+ 		//   复活一律靠「自己回合开始时复查、发现有人没有光环就补齐」兜底；平时 filter 为假，不打扰玩家。
+ 		trigger: { global: ["gameStart", "phaseBegin", "die"] },
+-		filter(event, player) {
+-			if (event.name === "die") {
++		filter(event, player, triggername) {
++			// ★ 触发名必须取**第三参**（规范第 2 条）：filter 第一参是源事件 —— phaseBegin 的源事件
++			//   name 是 "phase"、die 的源事件也不保证 name === "die"。原来用 event.name 判断，
++			//   一旦不成立就掉到下面的 isAlive 分支（自己已阵亡 → false）→ **光环永远收不回**
++			//   （2026-10-08 实机：巴巴托斯死后，属性【杀】依然指不到任何人）。
++			if (triggername === "die") {
+ 				// 只认自己阵亡 → 收回光环
+ 				return event.player === player;
+ 			}
+ 			if (!player.isAlive()) {
+ 				return false;
+ 			}
+-			// gameStart 时全场都没有光环 → 必铺；自己回合开始时只在「有人缺光环」时才补
++			// gameStart 时全场都没有光环 → 必铺；其它时机只在「有人缺光环」时才补
+ 			return game.filterPlayer2().some(current => !current.hasSkill("yomi_barbatos_gaotian_aura"));
+ 		},
+ 		async content(event, trigger, player) {
+@@ -464,7 +468,8 @@ const skills = {
+ 			//   （`die` 内容第 1 步即 game.players.remove(player)），只遍历 filterPlayer()
+ 			//   会导致阵亡时回收不干净、复活后残留光环。
+ 			const all = game.filterPlayer2();
+-			if (trigger.name === "die") {
++			// 两个判据都认（content 里 event.triggername 有效；trigger.name 是源事件名）
++			if (event.triggername === "die" || trigger.name === "die") {
+ 				for (const current of all) {
+ 					current.removeSkill("yomi_barbatos_gaotian_aura");
+ 				}
+@@ -483,6 +488,16 @@ const skills = {
+ 		charlotte: true,
+ 		silent: true,
+ 		forced: true,
++		// ★ 双保险：光环自己盯「巴巴托斯还在不在场」。主人阵亡时 game.players 第一步就把死者移出，
++		//   所以 hasPlayer 立刻为假 → 光环自我回收，**完全不依赖主人技能能否触发**
++		//   （2026-10-08 实机：主人技能那条收回路径曾整条失效，光环常驻导致全场指不到人）。
++		trigger: { global: "die" },
++		filter(event, player) {
++			return !game.hasPlayer(current => current.hasSkill("yomi_barbatos_gaotian"));
++		},
++		content(event, trigger, player) {
++			player.removeSkill("yomi_barbatos_gaotian_aura");
++		},
+ 		mod: {
+ 			targetEnabled(card, player, target) {
+ 				// target = 被指定的角色，同时也是本载体技能的持有者

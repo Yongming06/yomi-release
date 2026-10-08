@@ -1,0 +1,42 @@
+From 43a2d1d81593e1efd19f1209ca295ae113c16e63 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 12:50:11 +0800
+Subject: [PATCH 17/37] =?UTF-8?q?revert(card):=20=E6=92=A4=E9=94=80?=
+ =?UTF-8?q?=E3=80=8C=E5=8E=BB=E6=8E=89=20isCard=E3=80=8D=E7=9A=84=E6=94=B9?=
+ =?UTF-8?q?=E5=8A=A8=EF=BC=88=E5=AD=90=E4=BB=A3=E7=90=86=E5=A4=8D=E6=9F=A5?=
+ =?UTF-8?q?=E8=AF=81=E6=98=8E=E5=9B=A0=E6=9E=9C=E4=B8=8D=E6=88=90=E7=AB=8B?=
+ =?UTF-8?q?=EF=BC=89=EF=BC=8C=E6=94=B9=E4=B8=BA=E4=BF=9D=E7=95=99=20isCard?=
+ =?UTF-8?q?=20+=20=E8=AE=B0=E5=BD=95=E6=A0=B8=E9=AA=8C=E7=BB=93=E8=AE=BA?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/card/yomi_pack_reactive.js | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/apps/core/card/yomi_pack_reactive.js b/apps/core/card/yomi_pack_reactive.js
+index 6983472..27c1015 100644
+--- a/apps/core/card/yomi_pack_reactive.js
++++ b/apps/core/card/yomi_pack_reactive.js
+@@ -186,6 +186,11 @@ function respondFinish(player, card) {
+  * @returns {Promise<boolean>} 是否成功暗置（被无懈返回 false）
+  */
+ async function respondUse(player, card) {
++	// ★ 保留 isCard: true（2026-10-08 子代理复查结论）：它决定「日志/牌史是否显示花色」
++	//   （get/index.js:4073）与「isCard 类『使用锦囊时』技能是否触发」，正合本卡设计
++	//   （虚拟卡名统一为「应对」，但保留花色、不带点数）。
++	//   ⚠️ 别再拿它当「真牌被搬走」的原因：复查逐行追踪引擎后确认
++	//   {name,suit,isCard:true} 与 {name,suit} 在「会不会动玩家真实牌」上等价。
+ 	const vcard = { name: "yomi_respond", isCard: true, suit: get.suit(card) };
+ 	const useEvent = player.useCard(vcard, player, false);
+ 	await useEvent;
+@@ -824,6 +829,8 @@ export default {
+ 				//    · 黄月英等「使用锦囊时摸牌」的技能也会因此被触发（奥秘属于锦囊大类）。
+ 				//    ★ 信息脱敏：虚拟卡名字统一是「奥秘」，**不暴露真实卡名**；保留花色（suit）、
+ 				//      不带点数（number）—— 其他人只能"按花色猜"，无法用"花色+点数"锁定身份。
++				// ★ 同 respondUse：保留 isCard: true（日志显示花色 + 触发 isCard 类「使用锦囊时」技能）；
++				//   复查确认它与「动玩家真实牌」无关，详见 respondUse 上方注释。
+ 				const vcard = { name: "yomi_aomi", isCard: true, suit: get.suit(card) };
+ 				const useEvent = player.useCard(vcard, player, false);
+ 				await useEvent;

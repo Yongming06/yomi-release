@@ -1,0 +1,110 @@
+From 1ae51f8fbd3a3164b88a473325a14203961e5828 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 18:58:54 +0800
+Subject: [PATCH 21/37] =?UTF-8?q?fix:=20=E9=AB=98=E5=A4=A9=E5=85=89?=
+ =?UTF-8?q?=E7=8E=AF=E6=94=B9=E7=94=A8=20mod=20=E8=87=AA=E5=A4=B1=E6=95=88?=
+ =?UTF-8?q?=EF=BC=88=E6=A0=B9=E4=BF=AE=EF=BC=89+=20=E4=B8=BB=E4=BA=BA=20fo?=
+ =?UTF-8?q?rceDie=EF=BC=9B=E5=90=8C=E6=97=8F=20BA=20=E7=BE=A4=E7=9B=BE/?=
+ =?UTF-8?q?=E7=A0=B4=E7=94=B2=20buff=20=E8=A1=A5=20forceDie=E2=80=94?=
+ =?UTF-8?q?=E2=80=94=E4=BF=AE=E3=80=8C=E5=B7=B4=E5=B7=B4=E6=89=98=E6=96=AF?=
+ =?UTF-8?q?=E6=AD=BB=E5=90=8E=E5=B1=9E=E6=80=A7=E3=80=90=E6=9D=80=E3=80=91?=
+ =?UTF-8?q?=E6=8C=87=E4=B8=8D=E5=88=B0=E4=BA=BA=E3=80=8D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/character/yomi_char_ba/skill.js     |  4 +++
+ .../core/character/yomi_char_genshin/skill.js | 29 +++++++++++++++----
+ 2 files changed, 27 insertions(+), 6 deletions(-)
+
+diff --git a/apps/core/character/yomi_char_ba/skill.js b/apps/core/character/yomi_char_ba/skill.js
+index 1703a90..d47d0c0 100644
+--- a/apps/core/character/yomi_char_ba/skill.js
++++ b/apps/core/character/yomi_char_ba/skill.js
+@@ -2605,6 +2605,8 @@ const skillsBatch02 = {
+ 		forced: true,
+ 		popup: false,
+ 		nopop: true,
++		// ★ forceDie：否则「持有者自己阵亡 → 清护甲」这一支不会被引擎调用（isDead 拦，2026-10-08 复查指出）
++		forceDie: true,
+ 		trigger: { player: "phaseBegin", global: "dieAfter" },
+ 		filter(event, player, triggername) {
+ 			if (!(player.storage.yomi_ba_qundun_list || []).length) return false;
+@@ -2712,6 +2714,8 @@ const skillsBatch02 = {
+ 		forced: true,
+ 		popup: false,
+ 		nopop: true,
++		// ★ forceDie：否则「施法者/自己阵亡 → 清理」这一支不会被引擎调用（isDead 拦，2026-10-08 复查指出）
++		forceDie: true,
+ 		trigger: { player: "damageBegin3", global: ["phaseBegin", "dieAfter"] },
+ 		filter(event, player, triggername) {
+ 			const caster = player.storage.yomi_ba_pojia3_caster;
+diff --git a/apps/core/character/yomi_char_genshin/skill.js b/apps/core/character/yomi_char_genshin/skill.js
+index 0fcc5e8..bc0fb75 100644
+--- a/apps/core/character/yomi_char_genshin/skill.js
++++ b/apps/core/character/yomi_char_genshin/skill.js
+@@ -439,6 +439,11 @@ const skills = {
+ 	yomi_barbatos_gaotian: {
+ 		forced: true,
+ 		locked: true,
++		// ★ 必须声明 forceDie：引擎在**调用技能代码之前**就挡掉「阵亡者自己的技能」
++		//   （library/index.js:11064 / game/index.js:5997 `if (!info.forceDie && player.isDead()) return`），
++		//   而 die 第 1 步已把主人标记 dead → 不加 forceDie 时下面「自己阵亡时收回」这条支**永不执行**
++		//   （2026-10-08 复查结论；本体同类技能都带 forceDie，如 diy/skill.js:4190、mobile/skill.js:120）。
++		forceDie: true,
+ 		// silent + popup:false：这是「存活期间一直生效」的光环，不需要弹窗提示
+ 		popup: false,
+ 		silent: true,
+@@ -449,10 +454,10 @@ const skills = {
+ 		//   复活一律靠「自己回合开始时复查、发现有人没有光环就补齐」兜底；平时 filter 为假，不打扰玩家。
+ 		trigger: { global: ["gameStart", "phaseBegin", "die"] },
+ 		filter(event, player, triggername) {
+-			// ★ 触发名必须取**第三参**（规范第 2 条）：filter 第一参是源事件 —— phaseBegin 的源事件
+-			//   name 是 "phase"、die 的源事件也不保证 name === "die"。原来用 event.name 判断，
+-			//   一旦不成立就掉到下面的 isAlive 分支（自己已阵亡 → false）→ **光环永远收不回**
+-			//   （2026-10-08 实机：巴巴托斯死后，属性【杀】依然指不到任何人）。
++			// ★ 触发名取**第三参**（规范第 2 条，规范字段）。注意别把因果写错：
++			//   · phaseBegin 的源事件 name 是 "phase"（content.ts:4663/4841）→ 这里必须用第三参；
++			//   · die 的源事件 name **就是** "die"（content.ts:12543）→ 用 event.name 也能判对。
++			//   本支当年失效的真正原因是「缺 forceDie」（见上面 forceDie 注释），与 event.name 无关。
+ 			if (triggername === "die") {
+ 				// 只认自己阵亡 → 收回光环
+ 				return event.player === player;
+@@ -468,8 +473,9 @@ const skills = {
+ 			//   （`die` 内容第 1 步即 game.players.remove(player)），只遍历 filterPlayer()
+ 			//   会导致阵亡时回收不干净、复活后残留光环。
+ 			const all = game.filterPlayer2();
+-			// 两个判据都认（content 里 event.triggername 有效；trigger.name 是源事件名）
+-			if (event.triggername === "die" || trigger.name === "die") {
++			// 只认规范字段 event.triggername（`|| trigger.name === "die"` 作为通用写法会误伤
++			// dieBegin/dieAfter/dieEnd 这类子时机——它们的源事件同样是 die 事件，复查 low 项）
++			if (event.triggername === "die") {
+ 				for (const current of all) {
+ 					current.removeSkill("yomi_barbatos_gaotian_aura");
+ 				}
+@@ -488,6 +494,8 @@ const skills = {
+ 		charlotte: true,
+ 		silent: true,
+ 		forced: true,
++		popup: false,
++		nopop: true,
+ 		// ★ 双保险：光环自己盯「巴巴托斯还在不在场」。主人阵亡时 game.players 第一步就把死者移出，
+ 		//   所以 hasPlayer 立刻为假 → 光环自我回收，**完全不依赖主人技能能否触发**
+ 		//   （2026-10-08 实机：主人技能那条收回路径曾整条失效，光环常驻导致全场指不到人）。
+@@ -500,6 +508,15 @@ const skills = {
+ 		},
+ 		mod: {
+ 			targetEnabled(card, player, target) {
++				// ★★ 根修（2026-10-08 复查结论）：主人不在场 → 本光环**立即失效**。
++				//   写在 mod 里而不是靠事件收回，是因为引擎在调用技能代码之前就把「阵亡者自己的技能」挡掉了
++				//   （library/index.js:11064 / game/index.js:5997：`if (!info.forceDie && player.isDead()) return`），
++				//   而 die 第 1 步（content.ts:12499-12510）已把主人标记 dead 并移出 game.players
++				//   → 主人那条「自己阵亡时收回」的路径其实是**死代码**。
++				//   includeOut=true：只排除真正被移出 game.players 的死者（被移出游戏但没死的仍算在场）。
++				if (!game.hasPlayer(current => current.hasSkill("yomi_barbatos_gaotian"), true)) {
++					return;
++				}
+ 				// target = 被指定的角色，同时也是本载体技能的持有者
+ 				if (!target || typeof target.isLinked !== "function") {
+ 					return;

@@ -1,0 +1,124 @@
+From d2957811f06a361b2d54c7594d41352baf2f2133 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Wed, 7 Oct 2026 22:55:50 +0800
+Subject: [PATCH 16/37] =?UTF-8?q?feat(skill):=20=E5=85=A8=E5=8C=85?=
+ =?UTF-8?q?=E7=BB=9F=E4=B8=80=E3=80=8C=E4=BC=A0=E5=AF=BC=E4=BC=A4=E5=AE=B3?=
+ =?UTF-8?q?=E4=B8=8D=E9=87=8D=E5=A4=8D=E5=8A=A0=E6=88=90=E3=80=8D=E2=80=94?=
+ =?UTF-8?q?=E2=80=9410=20=E4=B8=AA=E4=BC=A4=E5=AE=B3=E5=8A=A0=E6=88=90?=
+ =?UTF-8?q?=E6=8A=80=E8=83=BD=E6=94=B9=E7=94=A8=E5=BC=95=E6=93=8E=20event.?=
+ =?UTF-8?q?notLink()=20=E5=88=A4=E5=AE=9A=EF=BC=88=E7=94=A8=E6=88=B7?=
+ =?UTF-8?q?=E9=80=89=20A=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/character/yomi_char_ba/skill.js | 31 +++++++++++------------
+ 1 file changed, 15 insertions(+), 16 deletions(-)
+
+diff --git a/apps/core/character/yomi_char_ba/skill.js b/apps/core/character/yomi_char_ba/skill.js
+index ee33507..e84ccd4 100644
+--- a/apps/core/character/yomi_char_ba/skill.js
++++ b/apps/core/character/yomi_char_ba/skill.js
+@@ -191,7 +191,7 @@ const skills = {
+ 		filter(event, player) {
+ 			// 来源全部阵亡后失效（死亡不会触发 onremove，这里按存活来源判断，子代理复核 medium 项）
+ 			if (!(player.storage.yomi_ba_hongke_sources || []).some(s => s.isAlive())) return false;
+-			return event.nature === "fire" && event.num > 1;
++			return event.nature === "fire" && event.num > 1 && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+ 			trigger.num *= 2;
+@@ -206,7 +206,7 @@ const skills = {
+ 		trigger: { source: "damageBegin1" },
+ 		filter(event, player) {
+ 			if (!(player.storage.yomi_ba_jiagong_sources || []).some(s => s.isAlive())) return false;
+-			return event.card && get.tag(event.card, "damage");
++			return event.card && get.tag(event.card, "damage") && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+ 			trigger.num += 1;
+@@ -513,7 +513,7 @@ const skills = {
+ 		group: ["yomi_ba_zhoubei_lock"],
+ 		trigger: { source: ["damageBegin3", "damageBegin4"] },
+ 		filter(event, player) {
+-			return event.nature === "fire";
++			return event.nature === "fire" && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+ 			// ⚠️ 判断「哪一步」必须用 event.triggername：damage 类触发的 trigger.name 恒为 "damage"
+@@ -1608,14 +1608,13 @@ function fromSingleTargetCard(event) {
+ 	return !!evt && (evt.targets || []).length === 1;
+ }
+ 
+-/** 是否是「铁索连环」传导出来的伤害：本次受伤者**不在该牌实际指定的目标里**。
+- *  ⚠️ 本项目自定义取舍（偏离本体）：传导伤害**不再重复吃**【瞄准】【充能】这类加成，
+- *  否则同一张【杀】会让被传导的角色比原目标多挨几点（实测 2 点 → 传导后 4 点）。 */
++/** 是否是「铁索连环」传导出来的伤害（本项目统一：**传导伤害不重复吃加成**）。
++ *  ✅ 用引擎自带的 `event.notLink()`：它判断本事件的父事件是不是 `_lianhuan`/`_lianhuan2`
++ *  （即铁索连环的传导事件），摩拉克斯·【武神】本来就在用它。
++ *  ⚠️ 这是**本项目自定义取舍**（偏离本体：本体对传导伤害会重新触发加成类技能），
++ *  目的是让数值符合直觉 —— 同一张【杀】打连环角色时，被传导者不该比原目标多挨几点。 */
+ function isChainedDamage(event) {
+-	const use = parentUseCard(event);
+-	if (!use) return false;
+-	const targets = use.targets || [];
+-	return targets.length > 0 && !targets.includes(event.player);
++	return typeof event.notLink === "function" && !event.notLink();
+ }
+ 
+ /** 向上找最近一个带 targets 的祖先事件（用于判断「多目标效果」） */
+@@ -2103,7 +2102,7 @@ const skillsBatch02 = {
+ 			if (event.triggername === "damageBegin4") return typeof event.yomi_ba_xinxing_locked === "number";
+ 			const ctx = player.storage.yomi_ba_xinxing_ctx;
+ 			// ⚠️ 不能用 event.card 判断：同角色【解放】已在 damageBegin1 把牌来源清掉
+-			return !!ctx && ctx.n > 0 && !!shanRequiredEvent(event);
++			return !!ctx && ctx.n > 0 && !!shanRequiredEvent(event) && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+ 			if (event.triggername === "damageBegin4") {
+@@ -2169,7 +2168,7 @@ const skillsBatch02 = {
+ 		filter(event, player) {
+ 			const caster = player.storage.yomi_ba_zengfu_caster;
+ 			if (!caster || !caster.isIn() || event.num <= 0) return false;
+-			return event.hasNature("thunder") || isFirstCardDamage(event, player);
++			return (event.hasNature("thunder") || isFirstCardDamage(event, player)) && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+ 			let n = 0;
+@@ -2387,7 +2386,7 @@ const skillsBatch02 = {
+ 		trigger: { source: "damageBegin3" },
+ 		filter(event, player) {
+ 			const caster = player.storage.yomi_ba_baoji_caster;
+-			return !!caster && caster.isIn() && event.num > 0;
++			return !!caster && caster.isIn() && event.num > 0 && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+ 			const { bool } = await player.judge(card => (get.color(card) === "black" ? 1 : 0)).forResult();
+@@ -2443,7 +2442,7 @@ const skillsBatch02 = {
+ 			if (event.triggername === "dieAfter") {
+ 				return event.player === caster || event.player === player;
+ 			}
+-			return event.num > 0;
++			return event.num > 0 && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+ 			if (event.triggername !== "damageBegin3") {
+@@ -2713,7 +2712,7 @@ const skillsBatch02 = {
+ 			if (event.triggername === "dieAfter") {
+ 				return event.player === caster || event.player === player;
+ 			}
+-			return event.num > 0;
++			return event.num > 0 && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+ 			if (event.triggername !== "damageBegin3") {
+@@ -2943,7 +2942,7 @@ const skillsBatch02 = {
+ 		nopop: true,
+ 		trigger: { source: "damageBegin3" },
+ 		filter(event, player) {
+-			return event.num > 0 && get.name(event.card) === "wanjian";
++			return event.num > 0 && get.name(event.card) === "wanjian" && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+ 			const add = Math.floor(player.countMark("yomi_ba_shui") / 5);

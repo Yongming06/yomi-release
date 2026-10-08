@@ -1,0 +1,59 @@
+From b581c0a304f44a7fb9fc9e0c8f6264c2bcde2b2c Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Wed, 7 Oct 2026 22:49:49 +0800
+Subject: [PATCH 15/37] =?UTF-8?q?feat(skill):=20=E3=80=90=E7=9E=84?=
+ =?UTF-8?q?=E5=87=86=E3=80=91=E3=80=90=E5=85=85=E8=83=BD=E3=80=91=E4=B8=8D?=
+ =?UTF-8?q?=E5=86=8D=E7=BB=99=E9=93=81=E7=B4=A2=E8=BF=9E=E7=8E=AF=E4=BC=A0?=
+ =?UTF-8?q?=E5=AF=BC=E4=BC=A4=E5=AE=B3=E9=87=8D=E5=A4=8D=E5=8A=A0=E6=88=90?=
+ =?UTF-8?q?=EF=BC=88=E7=94=A8=E6=88=B7=202026-10-07=20=E5=86=B3=E5=AE=9A?=
+ =?UTF-8?q?=EF=BC=8C=E6=96=B0=E5=A2=9E=20isChainedDamage=20=E5=88=A4?=
+ =?UTF-8?q?=E5=AE=9A=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/character/yomi_char_ba/skill.js | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/apps/core/character/yomi_char_ba/skill.js b/apps/core/character/yomi_char_ba/skill.js
+index b6ac19f..ee33507 100644
+--- a/apps/core/character/yomi_char_ba/skill.js
++++ b/apps/core/character/yomi_char_ba/skill.js
+@@ -1608,6 +1608,16 @@ function fromSingleTargetCard(event) {
+ 	return !!evt && (evt.targets || []).length === 1;
+ }
+ 
++/** 是否是「铁索连环」传导出来的伤害：本次受伤者**不在该牌实际指定的目标里**。
++ *  ⚠️ 本项目自定义取舍（偏离本体）：传导伤害**不再重复吃**【瞄准】【充能】这类加成，
++ *  否则同一张【杀】会让被传导的角色比原目标多挨几点（实测 2 点 → 传导后 4 点）。 */
++function isChainedDamage(event) {
++	const use = parentUseCard(event);
++	if (!use) return false;
++	const targets = use.targets || [];
++	return targets.length > 0 && !targets.includes(event.player);
++}
++
+ /** 向上找最近一个带 targets 的祖先事件（用于判断「多目标效果」） */
+ function nearestTargetsEvent(event) {
+ 	let evt = event.getParent();
+@@ -1755,7 +1765,8 @@ const skillsBatch02 = {
+ 			const end = player.storage.yomi_ba_chongneng_end;
+ 			if (typeof end !== "number") return false;
+ 			if (event.triggername === "phaseAfter") return player.phaseNumber >= end;
+-			return player.phaseNumber <= end && event.num > 0 && event.hasNature("thunder");
++			// 传导伤害不重复加成（本项目自定义，见 isChainedDamage 注释）
++			return player.phaseNumber <= end && event.num > 0 && event.hasNature("thunder") && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+ 			if (event.triggername === "phaseAfter") {
+@@ -1791,7 +1802,8 @@ const skillsBatch02 = {
+ 		nopop: true,
+ 		trigger: { source: "damageBegin3" },
+ 		filter(event, player) {
+-			return event.num > 0 && fromSingleTargetCard(event);
++			// 传导伤害不重复加成（本项目自定义，见 isChainedDamage 注释）
++			return event.num > 0 && fromSingleTargetCard(event) && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+ 			trigger.num++;

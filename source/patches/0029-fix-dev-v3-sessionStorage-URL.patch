@@ -1,0 +1,438 @@
+From e22d9e21d2b3ca755e0e3541413685528e95644d Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 21:05:38 +0800
+Subject: [PATCH 29/37] =?UTF-8?q?fix(dev):=20=E8=87=AA=E5=8A=A8=E5=AF=B9?=
+ =?UTF-8?q?=E5=B1=80=20v3=E2=80=94=E2=80=94sessionStorage=20=E4=BF=9D?=
+ =?UTF-8?q?=E5=AD=98=E6=89=B9=E6=AC=A1=E8=BF=9B=E5=BA=A6=20+=20=E6=8A=B9?=
+ =?UTF-8?q?=E6=8E=89=20URL=20=E5=8F=82=E6=95=B0=EF=BC=88=E4=BF=AE=E3=80=8C?=
+ =?UTF-8?q?=E6=AF=8F=E6=AC=A1=E6=95=B4=E9=A1=B5=E9=87=8D=E8=BD=BD=E9=83=BD?=
+ =?UTF-8?q?=E9=87=8D=E6=96=B0=E5=BC=80=E4=B8=80=E6=89=B9=E3=80=8D=EF=BC=89?=
+ =?UTF-8?q?=EF=BC=9B=E7=AD=89=E5=BE=85=E5=BC=95=E6=93=8E=E6=9C=9F=E9=97=B4?=
+ =?UTF-8?q?=E6=8C=81=E7=BB=AD=E6=89=98=E7=AE=A1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/_yomi_auto_report.txt |   4 -
+ apps/core/_yomi_devtools.js     | 323 +++++++++++++++++++++-----------
+ 2 files changed, 217 insertions(+), 110 deletions(-)
+
+diff --git a/apps/core/_yomi_auto_report.txt b/apps/core/_yomi_auto_report.txt
+index 3672a51..e69de29 100644
+--- a/apps/core/_yomi_auto_report.txt
++++ b/apps/core/_yomi_auto_report.txt
+@@ -1,4 +0,0 @@
+-
+-===== AUTO MATCH START 2026-10-08T12:09:19.089Z target 20 matches =====
+-
+-===== AUTO MATCH START 2026-10-08T12:12:08.091Z target 20 matches =====
+diff --git a/apps/core/_yomi_devtools.js b/apps/core/_yomi_devtools.js
+index 1df7d4a..b70e794 100644
+--- a/apps/core/_yomi_devtools.js
++++ b/apps/core/_yomi_devtools.js
+@@ -1,19 +1,23 @@
+ /* ============================================================================
+- * 【仅本地开发】自动对局回归测试 v2（无名杀 · 自制内容项目）
++ * 【仅本地开发】自动对局回归测试 v3（无名杀 · 自制内容项目）
+  *
+- * v1 的问题：靠「文本点击菜单」开局 —— 而 dev 版主菜单是 Vue 实现，点不中 ✗
+- * v2 改为**引擎 API**（已读源码确认）：
+- *   · 开局：localStorage.setItem(prefix+"directstart", true) + game.reload()
+- *           依据：init/index.ts:335 启动时读 directstart → 直接进对局
+- *                 （ui/create/menu/pages/startMenu.js:110-113 同款写法）
+- *   · 重开：game.reloadCurrent()（引擎「再战」按钮调用的就是它，game/index.js:7221）
+- *   · 托管：_status.auto = true / ui.click.auto()
+- *   · 选将/身份/座位界面：出现就点「确定」类按钮；再不行就把**页面状态快照**写进报告
++ * 为什么有 v3：
++ *   v1 靠文本点击菜单开局 —— dev 版主菜单是 Vue 实现，点不中 ✗（卡在重试循环）
++ *   v2 改用引擎 API，但漏了一个致命点：引擎每次「再来一局」都是**整页重载**
++ *      （game.reloadCurrent → game.reload → window.location.reload，game/index.js:4962）
++ *      而 URL 里的 ?yomiAuto=N 会跟着重载一直存在 → 每次重载都**重新开一批**，永远进不到对局 ✗
++ *   v3 用 sessionStorage 保存批次进度（跨重载存活）+ 初始化后把参数从 URL 抹掉 ✓
++ *
++ * 已核实的引擎事实（v3 全部依赖它们）：
++ *   · 开局：localStorage["<prefix>directstart"]="true" + game.reload() → 启动时直接进对局
++ *           （init/index.ts:335 读取该标志；ui/create/menu/pages/startMenu.js:110-113 同款）
++ *   · 再来一局：game.reloadCurrent()（game/index.js:4962；引擎「再战」按钮 :7221 调的就是它）
++ *   · 托管：_status.auto = true（game/index.js:10925）／ui.click.auto()（ui/click/index.js:4430）
+  *
+  * 用法：
+- *   ① http://127.0.0.1:8081/?yomiAuto=20   （推荐：配合项目根目录 auto_match.cmd 双击）
+- *   ② 控制台： __yomiAutoMatch(20)
+- *   ③ 诊断：   __yomiSnapshot()             （卡住时用，把当前页面状态写进报告）
++ *   ① http://127.0.0.1:8081/?yomiAuto=20   （推荐；配合项目根目录 auto_match.cmd 双击）
++ *   ② 控制台： __yomiAutoMatch(20)     ③ 诊断： __yomiSnapshot()
++ *   ④ 中止：   __yomiAutoStop()
+  * 输出：_yomi_auto_report.txt（每局摘要 + 失败诊断）、_yomi_errors.log（报错 + 事件链）
+  * ==========================================================================*/
+ (function () {
+@@ -21,6 +25,7 @@
+ 
+ 	const REPORT = "_yomi_auto_report.txt";
+ 	const ERRLOG = "_yomi_errors.log";
++	const KEY = "_yomi_auto_batch";
+ 	const sleep = ms => new Promise(r => setTimeout(r, ms));
+ 	const now = () => new Date().toISOString();
+ 
+@@ -45,7 +50,26 @@
+ 	}
+ 	const errLines = async () => (await readText(ERRLOG)).split("\n").length;
+ 
+-	/* ---------- 状态快照（失败时写进报告，便于远程定位） ---------- */
++	/* ---------- 批次状态（跨整页重载存活） ---------- */
++	const loadState = () => {
++		try {
++			return JSON.parse(sessionStorage.getItem(KEY) || "null");
++		} catch (e) {
++			return null;
++		}
++	};
++	const saveState = st => {
++		try {
++			sessionStorage.setItem(KEY, JSON.stringify(st));
++		} catch (e) {}
++	};
++	const clearState = () => {
++		try {
++			sessionStorage.removeItem(KEY);
++		} catch (e) {}
++	};
++
++	/* ---------- 状态快照 ---------- */
+ 	window.__yomiSnapshot = function () {
+ 		const vis = [];
+ 		for (const n of document.querySelectorAll("div,span,button")) {
+@@ -68,42 +92,50 @@
+ 		} catch (e) {}
+ 		return [
+ 			"  [快照] url=" + location.href,
++			"  [快照] 引擎已加载=" + !!(window.game && window.lib && lib.config),
+ 			"  [快照] game.me=" + (window.game && game.me ? get.translation(game.me.name) : "null"),
+ 			"  [快照] 存活人数=" + (window.game && game.players ? game.players.filter(p => p.isAlive && p.isAlive()).length : "?"),
+ 			"  [快照] mode=" + (window.lib && lib.config ? lib.config.mode : "?"),
+-			"  [快照] directstart=" + localStorage.getItem((window.lib ? lib.configprefix : "") + "directstart"),
++			"  [快照] directstart=" + localStorage.getItem((window.lib ? lib.configprefix : "noname_") + "directstart"),
+ 			"  [快照] _status.auto=" + (window._status ? _status.auto : "?"),
++			"  [快照] 批次状态=" + JSON.stringify(loadState()),
+ 			"  [快照] 事件链=" + evt,
+ 			"  [快照] 可见按钮文本=" + vis.join(" | "),
+ 		].join("\n");
+ 	};
+ 
+ 	/* ---------- 状态判断 ---------- */
+-	function ingame() {
++	const engineReady = () => {
+ 		try {
+-			return !!(window.game && game.me && game.players && game.players.length);
++			return !!(window.game && window.lib && lib.config && game.players);
+ 		} catch (e) {
+ 			return false;
+ 		}
+-	}
+-	function aliveCount() {
++	};
++	const ingame = () => {
++		try {
++			return !!(game.me && game.players && game.players.length);
++		} catch (e) {
++			return false;
++		}
++	};
++	const aliveCount = () => {
+ 		try {
+ 			return game.players.filter(p => p.isAlive()).length;
+ 		} catch (e) {
+ 			return -1;
+ 		}
+-	}
+-	function gameOver() {
++	};
++	const gameOver = () => {
+ 		try {
+-			if (window.ui && ui.continue_game) return true;
+-			if (window._status && _status.over) return true;
++			if (ui && ui.continue_game) return true;
++			if (_status && _status.over) return true;
+ 			return false;
+ 		} catch (e) {
+ 			return false;
+ 		}
+-	}
++	};
+ 
+-	/** 在可见元素里找按钮点击（精确 → 前缀包含，不点排除项） */
+ 	function clickAny(texts, exclude) {
+ 		for (const text of texts) {
+ 			for (const n of document.querySelectorAll("div,span,button,a")) {
+@@ -121,109 +153,188 @@
+ 		}
+ 		return null;
+ 	}
+-
+-	/** 托管：让 AI 接管我方（含选将、出牌、响应） */
+ 	function enableAuto() {
+ 		try {
+ 			if (window._status) _status.auto = true;
+ 			if (window.ui && ui.click && typeof ui.click.auto === "function" && !_status.auto) ui.click.auto();
+ 		} catch (e) {}
+ 	}
++	const tryAdvanceLobby = () => clickAny(["确定", "出战", "确认", "开始游戏", "开始", "随机"], ["自由选将", "更换", "返回", "重来"]);
+ 
+-	/** 推进「选将/身份/座位」这类等待界面 */
+-	function tryAdvanceLobby() {
+-		return clickAny(["确定", "出战", "确认", "开始游戏", "开始"], ["自由选将", "更换", "返回"]);
+-	}
+-
+-	/** 开始（或重开）一局，返回是否成功进入对局 */
+-	async function startMatch(verbose, firstTime) {
+-		if (ingame() && aliveCount() > 1) return true; // 已经在对局里（用户手动开好也走这条）
+-		for (let round = 0; round < 4; round++) {
+-			try {
+-				if (window.lib && lib.config && !lib.config.all.mode.includes(lib.config.mode)) {
+-					game.saveConfig("mode", "identity");
+-				}
+-				localStorage.setItem(lib.configprefix + "directstart", "true");
+-				if (!firstTime && round === 0 && typeof game.reloadCurrent === "function") {
+-					game.reloadCurrent(); // 引擎现成的「再来一局」
+-				} else {
+-					game.reload();
+-				}
+-			} catch (e) {
+-				if (verbose) console.log("[自动对局] 开局调用失败：" + e);
++	/** 等引擎就绪（页面加载可能很慢；期间尝试推进选将界面） */
++	async function waitEngine(maxSec, label) {
++		for (let i = 0; i < maxSec; i++) {
++			if (engineReady()) {
++				// 引擎就绪后再多等 2 秒，让首屏/选将界面稳定
++				await sleep(2000);
++				return true;
+ 			}
+-			for (let i = 0; i < 90; i++) {
+-				await sleep(1000);
+-				if (ingame() && aliveCount() > 1) return true;
+-				tryAdvanceLobby();
+-				enableAuto();
+-				if (verbose && i % 15 === 14) console.log("[自动对局] 等待开局… " + (i + 1) + "s");
++			tryAdvanceLobby();
++			enableAuto(); // 选将/身份/座位界面也让引擎自己选，避免卡在等玩家点确定
++			if (i === 20 || i === 60) {
++				await appendText(REPORT, "  [" + label + "] 等待引擎 " + (i + 1) + "s，快照：\n" + window.__yomiSnapshot() + "\n");
+ 			}
+-			if (verbose) console.log("[自动对局] 第 " + (round + 1) + " 次尝试没进对局，重试");
++			await sleep(1000);
+ 		}
+ 		return false;
+ 	}
+ 
+-	/* ---------- 主流程 ---------- */
+-	window.__yomiAutoMatch = async function (count, opts) {
+-		opts = opts || {};
+-		count = Math.max(1, parseInt(count) || 5);
+-		const perMatchMax = opts.perMatchMaxMs || 8 * 60 * 1000;
+-		const verbose = opts.verbose !== false;
+-		const t0 = Date.now();
+-		await appendText(REPORT, "\n===== AUTO MATCH START " + now() + " target " + count + " matches =====\n");
+-		await appendText(REPORT, "  [环境] mode=" + (window.lib && lib.config ? lib.config.mode : "?") + " ingame=" + ingame() + " alive=" + aliveCount() + "\n");
+-
+-		let ok = 0;
+-		for (let i = 1; i <= count; i++) {
+-			const before = await errLines();
+-			const mt = Date.now();
+-			const started = await startMatch(verbose, i === 1);
+-			if (!started) {
+-				await appendText(REPORT, "第 " + i + " 局：❌ 开局失败（引擎 API 也没进去）\n" + window.__yomiSnapshot() + "\n");
++	/** 确保进入对局；不在对局里就设 directstart 并整页重载（重载后用 sessionStorage 继续） */
++	async function ensureIngame(st, label) {
++		if (ingame() && aliveCount() > 1) return true;
++		const tries = (st.reloads = (st.reloads || 0) + 1);
++		if (tries > 4) {
++			await appendText(REPORT, "  ❌ " + label + " 连续 " + (tries - 1) + " 次重载仍未进入对局，放弃。\n" + window.__yomiSnapshot() + "\n");
++			return false;
++		}
++		saveState(st);
++		try {
++			if (!lib.config.all.mode.includes(lib.config.mode)) game.saveConfig("mode", "identity");
++			localStorage.setItem(lib.configprefix + "directstart", "true");
++			if (typeof game.reloadCurrent === "function") game.reloadCurrent();
++			else game.reload();
++		} catch (e) {
++			await appendText(REPORT, "  ❌ " + label + " 重载调用失败：" + e + "\n" + window.__yomiSnapshot() + "\n");
++			return false;
++		}
++		return null; // 页面即将重载
++	}
++
++	/* ---------- 单局推进（本页生命周期内） ---------- */
++	async function runCurrentMatch(st, verbose) {
++		st.errBase = st.errBase || (await errLines());
++		saveState(st);
++		const mt = Date.now();
++		enableAuto();
++		const perMatchMax = 8 * 60 * 1000;
++		let why = "timeout";
++		while (Date.now() - mt < perMatchMax) {
++			enableAuto();
++			if (gameOver()) {
++				why = "ended";
+ 				break;
+ 			}
+-			enableAuto();
+-			let why = "timeout";
+-			while (Date.now() - mt < perMatchMax) {
+-				enableAuto();
+-				if (gameOver()) {
+-					why = "ended";
+-					break;
+-				}
+-				if (ingame() && aliveCount() <= 1) {
+-					why = "1-alive";
+-					break;
+-				}
+-				await sleep(1500);
++			if (ingame() && aliveCount() <= 1) {
++				why = "1-alive";
++				break;
+ 			}
+-			const after = await errLines();
+-			let heroes = "?";
++			await sleep(1500);
++		}
++		const after = await errLines();
++		let heroes = "?";
++		try {
++			heroes = game.players
++				.filter(p => p.name && !String(p.name).startsWith("unknown"))
++				.map(p => get.translation(p.name))
++				.join(" / ");
++		} catch (e) {}
++		const idx = st.done + 1;
++		const line =
++			"第 " + idx + "/" + st.total + " 局：" + (why === "timeout" ? "⏱ 超时中止" : "✅ " + why) +
++			" 用时 " + Math.round((Date.now() - mt) / 1000) + "s 新增报错行 " + Math.max(0, after - st.errBase) +
++			" 存活 " + aliveCount() + " 武将：" + heroes + "\n";
++		await appendText(REPORT, line);
++		if (verbose) console.log("[自动对局] " + line.trim());
++		st.done = idx;
++		delete st.errBase;
++		delete st.reloads;
++		saveState(st);
++		return why;
++	}
++
++	/* ---------- 批次主循环 ---------- */
++	let running = false;
++	window.__yomiAutoStop = function () {
++		clearState();
++		running = false;
++		appendText(REPORT, "===== 用户中止 " + now() + " =====\n");
++		console.log("[自动对局] 已中止");
++	};
++
++	async function batchMain(verbose) {
++		if (running) return;
++		running = true;
++		const st = loadState();
++		if (!st || !st.total) {
++			running = false;
++			return;
++		}
++		await appendText(REPORT, "  [批次] total=" + st.total + " done=" + st.done + " 本页开始 " + now() + "\n");
++
++		const okEngine = await waitEngine(180, "批次");
++		if (!okEngine) {
++			await appendText(REPORT, "❌ 引擎 180 秒未就绪，放弃。\n" + window.__yomiSnapshot() + "\n");
++			clearState();
++			running = false;
++			return;
++		}
++
++		// 不在对局里 → 设 directstart 重载（本函数会在新页面继续）
++		if (!(ingame() && aliveCount() > 1)) {
++			const r = await ensureIngame(st, "批次");
++			running = false;
++			return; // null = 即将重载；false = 已放弃
++		}
++
++		// 已经在对局里（可能是重载后直接进来，也可能是用户手动开的那局）
++		const why = await runCurrentMatch(st, verbose);
++		await sleep(2000);
++		if (st.done >= st.total) {
++			await appendText(REPORT, "===== AUTO MATCH FINISHED " + now() + " done " + st.done + "/" + st.total + " =====\n");
++			clearState();
++			running = false;
++			// 恢复主菜单（清掉 directstart，免得下次打开又直接开局）
+ 			try {
+-				heroes = game.players
+-					.filter(p => p.name && !String(p.name).startsWith("unknown"))
+-					.map(p => get.translation(p.name))
+-					.join(" / ");
++				localStorage.removeItem(lib.configprefix + "directstart");
+ 			} catch (e) {}
+-			const line =
+-				"第 " + i + " 局：" + (why === "timeout" ? "⏱ 超时中止" : "✅ " + why) +
+-				" 用时 " + Math.round((Date.now() - mt) / 1000) + "s 新增报错行 " + Math.max(0, after - before) +
+-				" 存活 " + aliveCount() + " 武将：" + heroes + "\n";
+-			await appendText(REPORT, line);
+-			if (verbose) console.log("[自动对局] " + line.trim());
+-			ok++;
+-			await sleep(2000);
+-		}
+-		await appendText(REPORT, "===== AUTO MATCH FINISHED " + now() + " done " + ok + "/" + count + " elapsed " + Math.round((Date.now() - t0) / 1000) + "s =====\n");
+-		if (verbose) console.log("[自动对局] 全部结束");
+-		return ok;
++			console.log("[自动对局] 全部完成");
++			return;
++		}
++		// 下一局：引擎自带的「再来一局」（整页重载，状态在 sessionStorage 里继续）
++		saveState(st);
++		try {
++			game.reloadCurrent();
++		} catch (e) {
++			await appendText(REPORT, "  ❌ 调 reloadCurrent 失败：" + e + "\n");
++			clearState();
++			running = false;
++		}
++	}
++
++	/* ---------- 入口 ---------- */
++	window.__yomiAutoMatch = async function (count, opts) {
++		opts = opts || {};
++		count = Math.max(1, parseInt(count) || 5);
++		const existing = loadState();
++		if (existing && existing.total) {
++			// 已在批次中：继续（不重置）
++			console.log("[自动对局] 已有批次 total=" + existing.total + " done=" + existing.done + "，继续");
++			return batchMain(opts.verbose !== false);
++		}
++		const st = { total: count, done: 0, t0: Date.now() };
++		saveState(st);
++		await appendText(REPORT, "\n===== AUTO MATCH START " + now() + " target " + count + " matches =====\n");
++		await appendText(REPORT, "  [环境] " + location.href + " 引擎已加载=" + engineReady() + "\n");
++		return batchMain(opts.verbose !== false);
+ 	};
+ 
++	// URL 参数：只在**没有进行中批次**时用它开新批次，并立刻把参数从 URL 抹掉
++	// （否则每次整页重载都会重新开一批 —— v2 就是死在这里）
+ 	const m = /[?&]yomiAuto=(\d+)/.exec(location.search);
+-	if (m) {
+-		console.log("[自动对局 v2] 检测到 yomiAuto=" + m[1] + "，10 秒后开始");
+-		setTimeout(() => window.__yomiAutoMatch(m[1]), 10000);
++	const existing = loadState();
++	if (m && !(existing && existing.total)) {
++		const n = m[1];
++		try {
++			const url = new URL(location.href);
++			url.searchParams.delete("yomiAuto");
++			history.replaceState(null, "", url.toString());
++		} catch (e) {}
++		console.log("[自动对局 v3] yomiAuto=" + n + "，参数已从 URL 移除，等待引擎就绪后开始");
++		window.__yomiAutoMatch(n);
++	} else if (existing && existing.total) {
++		console.log("[自动对局 v3] 检测到进行中的批次 done=" + existing.done + "/" + existing.total + "，继续");
++		batchMain(true);
+ 	} else {
+-		console.log("[自动对局 v2] 就绪：控制台执行 __yomiAutoMatch(20)；卡住时用 __yomiSnapshot() 查看状态");
++		console.log("[自动对局 v3] 就绪：控制台执行 __yomiAutoMatch(20)；卡住时 __yomiSnapshot()；中止 __yomiAutoStop()");
+ 	}
+ })();

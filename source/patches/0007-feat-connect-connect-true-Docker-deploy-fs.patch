@@ -1,0 +1,804 @@
+From e4a94d6060aba45d3cda5f3c12ae322a8832d100 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Wed, 7 Oct 2026 15:33:19 +0800
+Subject: [PATCH 07/37] =?UTF-8?q?feat(connect):=20=E8=87=AA=E5=88=B6?=
+ =?UTF-8?q?=E5=8C=85=E6=94=AF=E6=8C=81=E8=81=94=E6=9C=BA=EF=BC=88connect:?=
+ =?UTF-8?q?=20true=EF=BC=89+=20=E8=81=94=E6=9C=BA=E8=87=AA=E5=BB=BA?=
+ =?UTF-8?q?=E6=9C=8D=E5=8A=A1=E7=AB=AF=20Docker=20=E5=8C=96=EF=BC=88deploy?=
+ =?UTF-8?q?/=20+=20fs=20=E7=9B=91=E5=90=AC=E5=9C=B0=E5=9D=80=E5=8F=AF?=
+ =?UTF-8?q?=E9=85=8D=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .dockerignore                                 |  12 +
+ apps/core/card/yomi_pack_core.js              |   2 +
+ apps/core/card/yomi_pack_crossover.js         |   2 +
+ apps/core/card/yomi_pack_meme.js              |   2 +
+ apps/core/card/yomi_pack_reactive.js          |   2 +
+ apps/core/card/yomi_pack_sanguo.js            |   2 +
+ apps/core/character/yomi_char_ba/index.js     |   2 +
+ .../core/character/yomi_char_genshin/index.js |   2 +
+ apps/core/character/yomi_char_test/index.js   |   2 +
+ deploy/Dockerfile.online                      |  41 ++
+ deploy/docker-compose.yml                     |  39 ++
+ deploy/package.docker.json                    |  15 +
+ deploy/start.sh                               |  42 ++
+ packages/fs/src/entry.ts                      |  28 +-
+ packages/fs/src/index.ts                      | 447 +++++++++---------
+ 15 files changed, 405 insertions(+), 235 deletions(-)
+ create mode 100644 .dockerignore
+ create mode 100644 deploy/Dockerfile.online
+ create mode 100644 deploy/docker-compose.yml
+ create mode 100644 deploy/package.docker.json
+ create mode 100644 deploy/start.sh
+
+diff --git a/.dockerignore b/.dockerignore
+new file mode 100644
+index 0000000..551ff37
+--- /dev/null
++++ b/.dockerignore
+@@ -0,0 +1,12 @@
++# Docker 构建上下文排除（避免把 3.5GB 依赖与缓存塞给 daemon）
++node_modules
++**/node_modules
++.git
++.gitignore
++.electron-cache
++dist
++**/dist
++*.log
++**/*.log
++_worklog
++deploy/_crop_tmp
+diff --git a/apps/core/card/yomi_pack_core.js b/apps/core/card/yomi_pack_core.js
+index 0f9caa4..e2c8138 100644
+--- a/apps/core/card/yomi_pack_core.js
++++ b/apps/core/card/yomi_pack_core.js
+@@ -67,6 +67,8 @@ function damageKind(event) {
+ 
+ export default {
+ 	name: "yomi_pack_core",
++	// 联机（connect）模式下允许使用本包：引擎对没有 connect 的包会把技能架空（loading.ts:70/:198）
++	connect: true,
+ 
+ 	card: {
+ 		// 还魂仙药：CSV id=1。「重铸。若你的当前体力上限低于武将初始体力上限，则使其变回初始体力上限。」
+diff --git a/apps/core/card/yomi_pack_crossover.js b/apps/core/card/yomi_pack_crossover.js
+index f13c9f9..b35da90 100644
+--- a/apps/core/card/yomi_pack_crossover.js
++++ b/apps/core/card/yomi_pack_crossover.js
+@@ -32,6 +32,8 @@ export const type = "card";
+ 
+ export default {
+ 	name: "yomi_pack_crossover",
++	// 联机（connect）模式下允许使用本包：引擎对没有 connect 的包会把技能架空（loading.ts:70/:198）
++	connect: true,
+ 
+ 	card: {
+ 		// 索瑞森大帝之锤：CSV id=13。武器，攻击范围 1。
+diff --git a/apps/core/card/yomi_pack_meme.js b/apps/core/card/yomi_pack_meme.js
+index 5c706d9..a116b9d 100644
+--- a/apps/core/card/yomi_pack_meme.js
++++ b/apps/core/card/yomi_pack_meme.js
+@@ -25,6 +25,8 @@ export const type = "card";
+ 
+ export default {
+ 	name: "yomi_pack_meme",
++	// 联机（connect）模式下允许使用本包：引擎对没有 connect 的包会把技能架空（loading.ts:70/:198）
++	connect: true,
+ 
+ 	card: {
+ 		// 猎马风暴：CSV id=31。「弃置场上所有的坐骑。」
+diff --git a/apps/core/card/yomi_pack_reactive.js b/apps/core/card/yomi_pack_reactive.js
+index 74593e8..6983472 100644
+--- a/apps/core/card/yomi_pack_reactive.js
++++ b/apps/core/card/yomi_pack_reactive.js
+@@ -427,6 +427,8 @@ lib.yomiRespond = {
+ 
+ export default {
+ 	name: "yomi_pack_reactive",
++	// 联机（connect）模式下允许使用本包：引擎对没有 connect 的包会把技能架空（loading.ts:70/:198）
++	connect: true,
+ 
+ 	card: {
+ 		// ★【奥秘】的**公共虚拟卡**：用于让"暗置奥秘"这个动作在字幕／日志里显示为「奥秘」，
+diff --git a/apps/core/card/yomi_pack_sanguo.js b/apps/core/card/yomi_pack_sanguo.js
+index c092c93..6af6c7e 100644
+--- a/apps/core/card/yomi_pack_sanguo.js
++++ b/apps/core/card/yomi_pack_sanguo.js
+@@ -36,6 +36,8 @@ export const type = "card";
+ 
+ export default {
+ 	name: "yomi_pack_sanguo",
++	// 联机（connect）模式下允许使用本包：引擎对没有 connect 的包会把技能架空（loading.ts:70/:198）
++	connect: true,
+ 
+ 	card: {
+ 		// 曹氏兵法：倾城而出：CSV id=6。宝物（equip5）。
+diff --git a/apps/core/character/yomi_char_ba/index.js b/apps/core/character/yomi_char_ba/index.js
+index b835290..e9468c6 100644
+--- a/apps/core/character/yomi_char_ba/index.js
++++ b/apps/core/character/yomi_char_ba/index.js
+@@ -27,6 +27,8 @@ lib.groupnature.millennium = "wu"; // 用户 2026-10-06 指定：千禧年配色
+ game.import("character", function () {
+ 	return {
+ 		name: "yomi_char_ba",
++		// 联机（connect）模式下允许使用本包：引擎对没有 connect 的包会把技能架空（loading.ts:70/:198）
++		connect: true,
+ 		character: { ...characters },
+ 		characterTitle: { ...characterTitles },
+ 		skill: { ...skills },
+diff --git a/apps/core/character/yomi_char_genshin/index.js b/apps/core/character/yomi_char_genshin/index.js
+index d1f0142..909646d 100644
+--- a/apps/core/character/yomi_char_genshin/index.js
++++ b/apps/core/character/yomi_char_genshin/index.js
+@@ -9,6 +9,8 @@ import characterTitles from "./characterTitle.js";
+ game.import("character", function () {
+ 	return {
+ 		name: "yomi_char_genshin",
++		// 联机（connect）模式下允许使用本包：引擎对没有 connect 的包会把技能架空（loading.ts:70/:198）
++		connect: true,
+ 		character: { ...characters },
+ 		characterTitle: { ...characterTitles },
+ 		skill: { ...skills },
+diff --git a/apps/core/character/yomi_char_test/index.js b/apps/core/character/yomi_char_test/index.js
+index 63ab547..ae52d5e 100644
+--- a/apps/core/character/yomi_char_test/index.js
++++ b/apps/core/character/yomi_char_test/index.js
+@@ -9,6 +9,8 @@ import characterTitles from "./characterTitle.js";
+ game.import("character", function () {
+ 	return {
+ 		name: "yomi_char_test",
++		// 联机（connect）模式下允许使用本包：引擎对没有 connect 的包会把技能架空（loading.ts:70/:198）
++		connect: true,
+ 		character: { ...characters },
+ 		characterTitle: { ...characterTitles },
+ 		skill: { ...skills },
+diff --git a/deploy/Dockerfile.online b/deploy/Dockerfile.online
+new file mode 100644
+index 0000000..4310632
+--- /dev/null
++++ b/deploy/Dockerfile.online
+@@ -0,0 +1,41 @@
++# ==============================================================================
++# 无名杀联机自建服务端（只跑两个 Node 进程，依赖最小化）
++#   · 网页端  @noname/fs      → 127.0.0.1:8089  静态服务 /app/dist（dist 由宿主 `pnpm build` 产出后挂载）
++#   · 大厅    @noname/server  → 0.0.0.0:8082    WebSocket 房间列表 / 房间消息中转
++#
++# 为什么不用仓库根目录的 pnpm 工作区安装：
++#   根工作区会连带 apps/mobile 的 electron 等重量级依赖（本地 node_modules 就有 3.5GB），
++#   而这两个服务端包都是**自包含**的（fs 只用 fastify 系 + minimist；server 只用 ws）→ 单独装最小依赖即可。
++#
++# 为什么用 tsx 直接跑 TS：省掉 packages/*/tsup 构建步骤，镜像更小、改代码更快生效。
++#
++# 关于基础镜像（2026-10-07 实测）：本机 **连不上 Docker Hub**（registry-1.docker.io 超时），
++#   所以默认走国内可用的镜像源；换到能直连 Docker Hub 的机器时，加 `--build-arg BASE_IMAGE=node:lts-slim` 即可。
++#   ⚠️ 不要写 `# syntax=docker/dockerfile:1`：那会额外去 Docker Hub 拉 BuildKit 前端镜像，在本机会直接失败。
++# ==============================================================================
++ARG BASE_IMAGE=docker.m.daocloud.io/library/node:lts-slim
++FROM ${BASE_IMAGE}
++
++# 依赖源同理：容器内 npm 走国内镜像（可用 --build-arg NPM_REGISTRY=... 覆盖）
++ARG NPM_REGISTRY=https://registry.npmmirror.com
++
++ENV TZ=Asia/Shanghai \
++    NODE_ENV=production
++
++WORKDIR /app
++
++# 最小依赖清单（版本对齐 packages/fs 与 packages/server 的 package.json）
++COPY deploy/package.docker.json /app/package.json
++RUN npm install --no-fund --no-audit --registry="${NPM_REGISTRY}" && npm cache clean --force
++
++# 两个服务端源码
++COPY packages/fs/src /app/fs/src
++COPY packages/server/src /app/server/src
++
++COPY deploy/start.sh /app/start.sh
++RUN chmod +x /app/start.sh
++
++# 网页端 8089 / 大厅 8082
++EXPOSE 8089 8082
++
++CMD ["/app/start.sh"]
+diff --git a/deploy/docker-compose.yml b/deploy/docker-compose.yml
+new file mode 100644
+index 0000000..5188ebd
+--- /dev/null
++++ b/deploy/docker-compose.yml
+@@ -0,0 +1,39 @@
++# ==============================================================================
++# 无名杀联机自建服务端（Docker Compose）
++#
++#   构建并启动： docker compose -f deploy/docker-compose.yml up -d --build
++#   看日志：     docker compose -f deploy/docker-compose.yml logs -f --tail 100
++#   重启：       docker compose -f deploy/docker-compose.yml restart
++#   停止：       docker compose -f deploy/docker-compose.yml down
++#
++# 网络设计（对应《内网穿透架构与迁移指南》的「只绑回环」原则）：
++#   端口只发布到宿主的 127.0.0.1（`127.0.0.1:8089:8089` 这种写法）→ 局域网访问不到，
++#   宿主的 cloudflared（已在跑）可以访问：
++#       127.0.0.1:8089  → 网页端（@noname/fs，容器内监听 0.0.0.0 才能被端口转发进来）
++#       127.0.0.1:8082  → 大厅（@noname/server，WebSocket）
++#
++#   ⚠️ 2026-10-07 实测：**不要用 `network_mode: host`** —— Docker Desktop(Windows) 上它并不共享宿主网络，
++#   容器里服务起得来但宿主连不上（端口全是 ECONNREFUSED）。用端口映射 + 容器内监听 0.0.0.0 才可靠。
++#
++# 网页端产物：
++#   容器不自己构建前端（那要把 1.25GB 的 dist 打进镜像）。约定：
++#       宿主执行  cd .. && pnpm build      # 产出 noname/dist
++#       然后重启容器即可生效（dist 以只读方式挂载）
++# ==============================================================================
++services:
++    noname:
++        build:
++            context: ..
++            dockerfile: deploy/Dockerfile.online
++        image: noname-online:latest
++        container_name: noname_online
++        ports:
++            # 只绑回环：局域网访问不到；隧道/反代在本机所以够用
++            - "127.0.0.1:8089:8089"
++            - "127.0.0.1:8082:8082"
++        volumes:
++            - ../dist:/app/dist:ro
++        environment:
++            TZ: Asia/Shanghai
++            NONAME_DIST: /app/dist
++        restart: unless-stopped
+diff --git a/deploy/package.docker.json b/deploy/package.docker.json
+new file mode 100644
+index 0000000..5e19d05
+--- /dev/null
++++ b/deploy/package.docker.json
+@@ -0,0 +1,15 @@
++{
++    "name": "noname-online-runtime",
++    "private": true,
++    "version": "1.0.0",
++    "type": "module",
++    "description": "无名杀联机自建服务端运行时（只装两个服务端需要的最小依赖）",
++    "dependencies": {
++        "@fastify/cors": "^11.2.0",
++        "@fastify/static": "^8.3.0",
++        "fastify": "^5.7.4",
++        "minimist": "^1.2.8",
++        "ws": "^8.19.0",
++        "tsx": "^4.21.0"
++    }
++}
+diff --git a/deploy/start.sh b/deploy/start.sh
+new file mode 100644
+index 0000000..426e7dc
+--- /dev/null
++++ b/deploy/start.sh
+@@ -0,0 +1,42 @@
++#!/bin/sh
++# ==============================================================================
++# 容器入口：同时拉起「网页端静态服务」与「大厅 WS 服务」
++#   · 任一进程退出 → 容器结束（交给 compose 的 restart: unless-stopped 拉起）
++#   · 收到 TERM/INT（docker stop / compose down）→ 两个子进程一起收尸
++# 说明：命令部分保持纯 ASCII；容器内是 UTF-8 的 /bin/sh，中文注释安全。
++# （纯 ASCII 的坑只在 Windows 的 .bat / cmd.exe 上，见《内网穿透架构与迁移指南》§7.5）
++#
++# 监听地址：
++#   · 网页端必须绑 0.0.0.0 —— Docker 的端口转发连的是**容器 IP**，
++#     容器内只绑 127.0.0.1 的话宿主映射不进来（2026-10-07 实测踩过）。
++#     暴露面由 compose 控制：端口只发布到宿主 127.0.0.1，局域网访问不到。
++#   · 大厅 (@noname/server) 本身就绑所有接口。
++# ==============================================================================
++set -e
++cd /app
++
++TSX=/app/node_modules/.bin/tsx
++DIST=${NONAME_DIST:-/app/dist}
++
++echo "[noname] web  @noname/fs     -> 0.0.0.0:8089 (dirname=$DIST)"
++"$TSX" fs/src/entry.ts --server --host 0.0.0.0 --dirname="$DIST" &
++FS_PID=$!
++
++echo "[noname] hall @noname/server -> 0.0.0.0:8082"
++"$TSX" server/src/cli.ts &
++LOBBY_PID=$!
++
++stop() {
++    kill "$FS_PID" "$LOBBY_PID" 2>/dev/null || true
++    wait 2>/dev/null || true
++    exit 0
++}
++trap stop TERM INT
++
++# dash 没有 wait -n，用轮询代替：两个都活着就继续等
++while kill -0 "$FS_PID" 2>/dev/null && kill -0 "$LOBBY_PID" 2>/dev/null; do
++    sleep 5
++done
++
++echo "[noname] a child process exited, stopping container"
++stop
+diff --git a/packages/fs/src/entry.ts b/packages/fs/src/entry.ts
+index 0464cbe..c352f82 100644
+--- a/packages/fs/src/entry.ts
++++ b/packages/fs/src/entry.ts
+@@ -1,13 +1,15 @@
+-#!/usr/bin/env node
+-import minimist from "minimist";
+-import { defaultConfig, default as createApp } from "./index";
+-
+-// 解析命令行参数
+-// 示例: -s --maxAge 100
+-createApp(
+-	minimist(process.argv.slice(2), {
+-		boolean: true,
+-		alias: { server: "s" },
+-		default: defaultConfig,
+-	}) as any
+-);
++#!/usr/bin/env node
++import minimist from "minimist";
++import { defaultConfig, default as createApp } from "./index";
++
++// 解析命令行参数
++// 示例: -s --maxAge 100
++createApp(
++	minimist(process.argv.slice(2), {
++		// 只把真正的开关当布尔：`boolean: true` 会让 `--host 0.0.0.0` 被解析成 host: true
++		// （值丢到位置参数里）→ Fastify 报 ERR_INVALID_ARG_TYPE
++		boolean: ["server", "debug"],
++		alias: { server: "s" },
++		default: defaultConfig,
++	}) as any
++);
+diff --git a/packages/fs/src/index.ts b/packages/fs/src/index.ts
+index f9bd245..ce64430 100644
+--- a/packages/fs/src/index.ts
++++ b/packages/fs/src/index.ts
+@@ -1,222 +1,225 @@
+-import Fastify from "fastify";
+-import fastifyStatic from "@fastify/static";
+-import cors from "@fastify/cors";
+-import fs from "fs/promises";
+-import path from "path";
+-import { cwd } from "process";
+-import { exec } from "child_process";
+-
+-interface JsonResult<T = any> {
+-	success: boolean;
+-	code: number;
+-	errorMsg?: string;
+-	data?: T;
+-}
+-
+-const successfulJson = <T = any>(data?: T): JsonResult<T> => ({
+-	success: true,
+-	code: 200,
+-	data,
+-});
+-const failedJson = <T = any>(code: number, message?: string): JsonResult<T> => ({
+-	success: false,
+-	code,
+-	errorMsg: message,
+-});
+-
+-export const defaultConfig = {
+-	server: false,
+-	port: 8089,
+-	debug: false,
+-	dirname: cwd(),
+-};
+-
+-function createFsHandler(dirname: string) {
+-	const join = (url: string) => path.join(dirname, url);
+-	const isInProject = (url: string) => path.normalize(join(url)).startsWith(dirname);
+-
+-	const ensureSafe = (url: string) => {
+-		if (!isInProject(url)) throw new Error(`只能访问 ${dirname} 下的资源`);
+-		return join(url);
+-	};
+-
+-	const wrap = <Q, R>(fn: (query: Q) => Promise<R>) => {
+-		return async (req: any) => {
+-			try {
+-				return successfulJson(await fn(req.method == "POST" ? req.body : req.query));
+-			} catch (e: any) {
+-				return failedJson(400, String(e));
+-			}
+-		};
+-	};
+-
+-	return { join, ensureSafe, wrap };
+-}
+-
+-export default function createApp(config: Partial<typeof defaultConfig> = {}) {
+-	const cfg = { ...defaultConfig, ...config };
+-	cfg.dirname = path.resolve(cfg.dirname);
+-	if (cfg.debug) console.log(cfg);
+-	const app = Fastify({
+-		logger: cfg.debug,
+-	});
+-
+-	const { ensureSafe, wrap } = createFsHandler(cfg.dirname);
+-
+-	app.register(cors, {
+-		origin: "*",
+-		methods: ["GET", "POST", "OPTIONS"],
+-	});
+-
+-	app.register(fastifyStatic, {
+-		root: cfg.dirname,
+-		prefix: "/",
+-		dotfiles: "allow",
+-		maxAge: 0,
+-	});
+-
+-	// index.html
+-	app.get("/", async (req, reply) => reply.redirect("/index.html"));
+-
+-	app.get(
+-		"/createDir",
+-		wrap(async ({ dir }: { dir: string }) => {
+-			const full = ensureSafe(dir);
+-			await fs.mkdir(full, { recursive: true });
+-			return true;
+-		})
+-	);
+-
+-	app.get(
+-		"/removeDir",
+-		wrap(async ({ dir }: { dir: string }) => {
+-			const full = ensureSafe(dir);
+-			const stat = await fs.stat(full);
+-			if (!stat.isDirectory()) throw new Error(`${full} 不是文件夹`);
+-			await fs.rm(full, { recursive: true, force: true });
+-			return true;
+-		})
+-	);
+-
+-	app.get(
+-		"/readFile",
+-		wrap(async ({ fileName }: { fileName: string }) => {
+-			const full = ensureSafe(fileName);
+-			const data = await fs.readFile(full);
+-			return [...new Uint8Array(data)];
+-		})
+-	);
+-
+-	app.get(
+-		"/readFileAsText",
+-		wrap(async ({ fileName }: { fileName: string }) => {
+-			const full = ensureSafe(fileName);
+-			return await fs.readFile(full, "utf-8");
+-		})
+-	);
+-
+-	app.post(
+-		"/writeFile",
+-		{
+-			bodyLimit: 10 * 1024 * 1024 * 1024,
+-		},
+-		wrap(async ({ path: p, data }: { path: string; data: number[] }) => {
+-			const full = ensureSafe(p);
+-			await fs.mkdir(path.dirname(full), { recursive: true });
+-			await fs.writeFile(full, Buffer.from(data));
+-			return true;
+-		})
+-	);
+-
+-	app.get(
+-		"/removeFile",
+-		wrap(async ({ fileName }: { fileName: string }) => {
+-			const full = ensureSafe(fileName);
+-			const stat = await fs.stat(full);
+-			if (stat.isDirectory()) throw new Error("不能删除文件夹");
+-			await fs.unlink(full);
+-			return true;
+-		})
+-	);
+-
+-	app.get(
+-		"/getFileList",
+-		wrap(async ({ dir }: { dir: string }) => {
+-			const full = ensureSafe(dir);
+-			const stat = await fs.stat(full);
+-			if (stat.isFile()) throw new Error("路径不是文件夹");
+-
+-			const entries = await fs.readdir(full);
+-			const files: string[] = [];
+-			const folders: string[] = [];
+-
+-			await Promise.all(
+-				entries.map(async entry => {
+-					if (entry.startsWith(".") || entry.startsWith("_")) return;
+-					const s = await fs.stat(path.join(full, entry));
+-					s.isDirectory() ? folders.push(entry) : files.push(entry);
+-				})
+-			);
+-
+-			return { folders, files };
+-		})
+-	);
+-
+-	app.get(
+-		"/checkFile",
+-		wrap(async ({ fileName }: { fileName: string }) => {
+-			const full = ensureSafe(fileName);
+-			try {
+-				const stat = await fs.stat(full);
+-				if (stat.isFile()) return "file";
+-				else return "directory";
+-			} catch {
+-				return {};
+-			}
+-		})
+-	);
+-
+-	app.get(
+-		"/checkDir",
+-		wrap(async ({ dir }: { dir: string }) => {
+-			const full = ensureSafe(dir);
+-			try {
+-				const stat = await fs.stat(full);
+-				if (stat.isFile()) return "file";
+-				else return "directory";
+-			} catch {
+-				return {};
+-			}
+-		})
+-	);
+-
+-	app.setNotFoundHandler((req, reply) => {
+-		reply.code(404).send("Sorry can't find that!");
+-	});
+-
+-	app.setErrorHandler((err, req, reply) => {
+-		reply.send(failedJson(400, String(err)));
+-	});
+-
+-	const callback = () => {
+-		console.log(`Server listening on port ${cfg.port}`);
+-		if (!cfg.server && !cfg.debug) exec(`start http://localhost:${cfg.port}/`);
+-	};
+-
+-	// if (config.https) {
+-	// 	const SSLOptions = {
+-	// 		key: fs.readFileSync(path.join(config.dirname, "localhost.decrypted.key")),
+-	// 		cert: fs.readFileSync(path.join(config.dirname, "localhost.crt")),
+-	// 	};
+-	// 	const httpsServer = https.createServer(SSLOptions, app);
+-	// 	// 会提示NET::ERR_CERT_AUTHORITY_INVALID
+-	// 	// 但浏览器还是可以访问的
+-	// 	// todo: 解决sw注册问题
+-	// 	httpsServer.listen(config.port, callback);
+-	// } else {
+-	// 	app.listen(config.port, callback);
+-	// }
+-	app.listen({ port: cfg.port }, callback);
+-
+-	return app;
+-}
++import Fastify from "fastify";
++import fastifyStatic from "@fastify/static";
++import cors from "@fastify/cors";
++import fs from "fs/promises";
++import path from "path";
++import { cwd } from "process";
++import { exec } from "child_process";
++
++interface JsonResult<T = any> {
++	success: boolean;
++	code: number;
++	errorMsg?: string;
++	data?: T;
++}
++
++const successfulJson = <T = any>(data?: T): JsonResult<T> => ({
++	success: true,
++	code: 200,
++	data,
++});
++const failedJson = <T = any>(code: number, message?: string): JsonResult<T> => ({
++	success: false,
++	code,
++	errorMsg: message,
++});
++
++export const defaultConfig = {
++	server: false,
++	port: 8089,
++	debug: false,
++	dirname: cwd(),
++	// 监听地址：默认只绑回环（开发态不变）；容器里用 `--host 0.0.0.0`，
++	// 由 compose 把端口只发布到宿主的 127.0.0.1，避免把这个带写文件接口的服务暴露到局域网。
++	host: "127.0.0.1",
++};
++
++function createFsHandler(dirname: string) {
++	const join = (url: string) => path.join(dirname, url);
++	const isInProject = (url: string) => path.normalize(join(url)).startsWith(dirname);
++
++	const ensureSafe = (url: string) => {
++		if (!isInProject(url)) throw new Error(`只能访问 ${dirname} 下的资源`);
++		return join(url);
++	};
++
++	const wrap = <Q, R>(fn: (query: Q) => Promise<R>) => {
++		return async (req: any) => {
++			try {
++				return successfulJson(await fn(req.method == "POST" ? req.body : req.query));
++			} catch (e: any) {
++				return failedJson(400, String(e));
++			}
++		};
++	};
++
++	return { join, ensureSafe, wrap };
++}
++
++export default function createApp(config: Partial<typeof defaultConfig> = {}) {
++	const cfg = { ...defaultConfig, ...config };
++	cfg.dirname = path.resolve(cfg.dirname);
++	if (cfg.debug) console.log(cfg);
++	const app = Fastify({
++		logger: cfg.debug,
++	});
++
++	const { ensureSafe, wrap } = createFsHandler(cfg.dirname);
++
++	app.register(cors, {
++		origin: "*",
++		methods: ["GET", "POST", "OPTIONS"],
++	});
++
++	app.register(fastifyStatic, {
++		root: cfg.dirname,
++		prefix: "/",
++		dotfiles: "allow",
++		maxAge: 0,
++	});
++
++	// index.html
++	app.get("/", async (req, reply) => reply.redirect("/index.html"));
++
++	app.get(
++		"/createDir",
++		wrap(async ({ dir }: { dir: string }) => {
++			const full = ensureSafe(dir);
++			await fs.mkdir(full, { recursive: true });
++			return true;
++		})
++	);
++
++	app.get(
++		"/removeDir",
++		wrap(async ({ dir }: { dir: string }) => {
++			const full = ensureSafe(dir);
++			const stat = await fs.stat(full);
++			if (!stat.isDirectory()) throw new Error(`${full} 不是文件夹`);
++			await fs.rm(full, { recursive: true, force: true });
++			return true;
++		})
++	);
++
++	app.get(
++		"/readFile",
++		wrap(async ({ fileName }: { fileName: string }) => {
++			const full = ensureSafe(fileName);
++			const data = await fs.readFile(full);
++			return [...new Uint8Array(data)];
++		})
++	);
++
++	app.get(
++		"/readFileAsText",
++		wrap(async ({ fileName }: { fileName: string }) => {
++			const full = ensureSafe(fileName);
++			return await fs.readFile(full, "utf-8");
++		})
++	);
++
++	app.post(
++		"/writeFile",
++		{
++			bodyLimit: 10 * 1024 * 1024 * 1024,
++		},
++		wrap(async ({ path: p, data }: { path: string; data: number[] }) => {
++			const full = ensureSafe(p);
++			await fs.mkdir(path.dirname(full), { recursive: true });
++			await fs.writeFile(full, Buffer.from(data));
++			return true;
++		})
++	);
++
++	app.get(
++		"/removeFile",
++		wrap(async ({ fileName }: { fileName: string }) => {
++			const full = ensureSafe(fileName);
++			const stat = await fs.stat(full);
++			if (stat.isDirectory()) throw new Error("不能删除文件夹");
++			await fs.unlink(full);
++			return true;
++		})
++	);
++
++	app.get(
++		"/getFileList",
++		wrap(async ({ dir }: { dir: string }) => {
++			const full = ensureSafe(dir);
++			const stat = await fs.stat(full);
++			if (stat.isFile()) throw new Error("路径不是文件夹");
++
++			const entries = await fs.readdir(full);
++			const files: string[] = [];
++			const folders: string[] = [];
++
++			await Promise.all(
++				entries.map(async entry => {
++					if (entry.startsWith(".") || entry.startsWith("_")) return;
++					const s = await fs.stat(path.join(full, entry));
++					s.isDirectory() ? folders.push(entry) : files.push(entry);
++				})
++			);
++
++			return { folders, files };
++		})
++	);
++
++	app.get(
++		"/checkFile",
++		wrap(async ({ fileName }: { fileName: string }) => {
++			const full = ensureSafe(fileName);
++			try {
++				const stat = await fs.stat(full);
++				if (stat.isFile()) return "file";
++				else return "directory";
++			} catch {
++				return {};
++			}
++		})
++	);
++
++	app.get(
++		"/checkDir",
++		wrap(async ({ dir }: { dir: string }) => {
++			const full = ensureSafe(dir);
++			try {
++				const stat = await fs.stat(full);
++				if (stat.isFile()) return "file";
++				else return "directory";
++			} catch {
++				return {};
++			}
++		})
++	);
++
++	app.setNotFoundHandler((req, reply) => {
++		reply.code(404).send("Sorry can't find that!");
++	});
++
++	app.setErrorHandler((err, req, reply) => {
++		reply.send(failedJson(400, String(err)));
++	});
++
++	const callback = () => {
++		console.log(`Server listening on port ${cfg.port}`);
++		if (!cfg.server && !cfg.debug) exec(`start http://localhost:${cfg.port}/`);
++	};
++
++	// if (config.https) {
++	// 	const SSLOptions = {
++	// 		key: fs.readFileSync(path.join(config.dirname, "localhost.decrypted.key")),
++	// 		cert: fs.readFileSync(path.join(config.dirname, "localhost.crt")),
++	// 	};
++	// 	const httpsServer = https.createServer(SSLOptions, app);
++	// 	// 会提示NET::ERR_CERT_AUTHORITY_INVALID
++	// 	// 但浏览器还是可以访问的
++	// 	// todo: 解决sw注册问题
++	// 	httpsServer.listen(config.port, callback);
++	// } else {
++	// 	app.listen(config.port, callback);
++	// }
++	app.listen({ port: cfg.port, host: cfg.host }, callback);
++
++	return app;
++}

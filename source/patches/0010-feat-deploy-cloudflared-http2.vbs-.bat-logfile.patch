@@ -1,0 +1,82 @@
+From 41aecc2cb6d2f32e0a9f4f495646d7b9ebf4ef91 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Wed, 7 Oct 2026 18:19:54 +0800
+Subject: [PATCH 10/37] =?UTF-8?q?feat(deploy):=20=E5=8A=A0=20cloudflared-h?=
+ =?UTF-8?q?ttp2.vbs=EF=BC=88=E6=97=A0=E7=AA=97=E5=8F=A3=E5=8C=85=E8=A3=85?=
+ =?UTF-8?q?=EF=BC=89+=20.bat=20=E5=A2=9E=E5=8A=A0=20--logfile?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ deploy/cloudflared-http2.bat | 11 ++++++++---
+ deploy/cloudflared-http2.vbs | 23 +++++++++++++++++++++++
+ 2 files changed, 31 insertions(+), 3 deletions(-)
+ create mode 100644 deploy/cloudflared-http2.vbs
+
+diff --git a/deploy/cloudflared-http2.bat b/deploy/cloudflared-http2.bat
+index 7aec385..492a445 100644
+--- a/deploy/cloudflared-http2.bat
++++ b/deploy/cloudflared-http2.bat
+@@ -6,10 +6,13 @@ rem      (measured 2026-10-07; see the online-server doc, section 9).
+ rem
+ rem Token lookup order:
+ rem   1) env var CLOUDFLARED_TUNNEL_TOKEN
+-rem   2) <workspace root>\.cloudflare-tunnel-token   (i.e. two levels above this .bat)
++rem   2) <workspace root>\.cloudflare-tunnel-token   (two levels above this .bat)
+ rem   3) <noname repo root>\.cloudflare-tunnel-token (one level above this .bat)
+ rem Single line, no quotes, no BOM. Both files are git-ignored - keep them private.
+ rem
++rem Log: <workspace root>\_worklog\cloudflared-http2.log  (useful when run hidden
++rem      via cloudflared-http2.vbs; tail it to see connection state).
++rem
+ rem NOTE: this .bat must stay PURE ASCII. Chinese characters in a .bat get
+ rem garbled by cmd's OEM code page and break the script (see the intranet
+ rem guide, section 7.5) - that is why every line here is English only.
+@@ -17,6 +20,7 @@ rem ============================================================================
+ chcp 65001 >nul
+ setlocal
+ set "EXE=C:\Program Files (x86)\cloudflared\cloudflared.exe"
++set "LOG=%~dp0..\..\_worklog\cloudflared-http2.log"
+ set "TOKEN=%CLOUDFLARED_TUNNEL_TOKEN%"
+ if not defined TOKEN if exist "%~dp0..\..\.cloudflare-tunnel-token" set /p TOKEN=<"%~dp0..\..\.cloudflare-tunnel-token"
+ if not defined TOKEN if exist "%~dp0..\.cloudflare-tunnel-token" set /p TOKEN=<"%~dp0..\.cloudflare-tunnel-token"
+@@ -25,6 +29,7 @@ if not defined TOKEN (
+   echo         Looked at: %CLOUDFLARED_TUNNEL_TOKEN%, %~dp0..\..\.cloudflare-tunnel-token, %~dp0..\.cloudflare-tunnel-token
+   exit /b 1
+ )
+-echo [noname] starting cloudflared with --protocol=http2
+-"%EXE%" tunnel run --protocol=http2 --token "%TOKEN%"
++if not exist "%~dp0..\..\_worklog" mkdir "%~dp0..\..\_worklog"
++echo [noname] starting cloudflared with --protocol=http2 (log: %LOG%)
++"%EXE%" tunnel --logfile "%LOG%" run --protocol=http2 --token "%TOKEN%"
+ endlocal
+diff --git a/deploy/cloudflared-http2.vbs b/deploy/cloudflared-http2.vbs
+new file mode 100644
+index 0000000..82ebeb8
+--- /dev/null
++++ b/deploy/cloudflared-http2.vbs
+@@ -0,0 +1,23 @@
++' ===========================================================================
++' Hidden launcher for cloudflared-http2.bat  (no console window).
++'
++' Why: when the tunnel is started by a scheduled task / startup shortcut we do
++'      not want a console window hanging around. This wrapper runs the .bat
++'      with window style 0 (hidden) and without waiting.
++'
++' Log: the .bat writes to <workspace root>\_worklog\cloudflared-http2.log
++'
++' How to use:
++'   1) put a shortcut to this .vbs into  shell:startup   (simplest), or
++'   2) register a scheduled task (see the online-server doc, section 8):
++'        $a = New-ScheduledTaskAction -Execute "wscript.exe" -Argument '"<full path>\cloudflared-http2.vbs"'
++'        $t = New-ScheduledTaskTrigger -AtLogOn
++'        Register-ScheduledTask -TaskName "NonameTunnel" -Action $a -Trigger $t -Force
++'
++' Keep this file pure ASCII (see the intranet guide, section 7.5).
++' ===========================================================================
++Set fso = CreateObject("Scripting.FileSystemObject")
++Set sh  = CreateObject("WScript.Shell")
++here = fso.GetParentFolderName(WScript.ScriptFullName)
++sh.CurrentDirectory = here
++sh.Run """" & here & "\cloudflared-http2.bat""", 0, False

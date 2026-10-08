@@ -1,0 +1,40 @@
+From 1a642aef5300f6f83c738685d0d9cdcd14cc055f Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 19:52:20 +0800
+Subject: [PATCH 25/37] =?UTF-8?q?fix(test):=20=E8=A1=A5=E4=B8=8A=20lib.yom?=
+ =?UTF-8?q?iAomi=20=E5=AF=BC=E5=87=BA=EF=BC=88=E4=B8=8A=E4=B8=80=E6=8F=90?=
+ =?UTF-8?q?=E4=BA=A4=E9=94=9A=E7=82=B9=E7=BC=A9=E8=BF=9B=E4=B8=8D=E7=AC=A6?=
+ =?UTF-8?q?=E6=BC=8F=E6=8E=89=EF=BC=89=E2=80=94=E2=80=94=E6=8C=87=E6=8C=A5?=
+ =?UTF-8?q?=C3=97=E5=A5=A5=E7=A7=98=E7=89=8C=E7=9C=9F=E6=AD=A3=E5=8F=AF?=
+ =?UTF-8?q?=E6=8C=82?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/card/yomi_pack_reactive.js | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/apps/core/card/yomi_pack_reactive.js b/apps/core/card/yomi_pack_reactive.js
+index cdb03cd..d6f7721 100644
+--- a/apps/core/card/yomi_pack_reactive.js
++++ b/apps/core/card/yomi_pack_reactive.js
+@@ -430,6 +430,18 @@ lib.yomiRespond = {
+ 	reveal: respondReveal,
+ };
+ 
++/**
++ * 【奥秘】同样对武将包暴露一套最小 API（2026-10-08）：
++ *   测试/调试需要「把某张奥秘牌直接暗置到某个角色身上」的能力，
++ *   而 aomiRegister / aomiActivate 是卡包内的模块级私有函数。
++ * 属性名固定为 `lib.yomiAomi`，缺失时调用方应优雅失败并打日志。
++ */
++lib.yomiAomi = {
++	isAomiCard: card => !!(card && card.name && lib.card[card.name]?.yomi_aomi),
++	register: aomiRegister,
++	activate: aomiActivate,
++};
++
+ export default {
+ 	name: "yomi_pack_reactive",
+ 	// 联机（connect）模式下允许使用本包：引擎对没有 connect 的包会把技能架空（loading.ts:70/:198）

@@ -1,0 +1,51 @@
+From a762ce26440b15b040e02f2a207df606ea0d9fef Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Wed, 7 Oct 2026 18:07:09 +0800
+Subject: [PATCH 08/37] =?UTF-8?q?feat(deploy):=20cloudflared-http2.bat?=
+ =?UTF-8?q?=EF=BC=88HTTP/2=20=E5=9B=BA=E5=8C=96=E7=94=A8=EF=BC=9B=E7=BA=AF?=
+ =?UTF-8?q?=20ASCII=E3=80=81token=20=E4=BB=8E=E7=8E=AF=E5=A2=83=E5=8F=98?=
+ =?UTF-8?q?=E9=87=8F=E6=88=96=20.cloudflare-tunnel-token=20=E8=AF=BB?=
+ =?UTF-8?q?=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ deploy/cloudflared-http2.bat | 28 ++++++++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+ create mode 100644 deploy/cloudflared-http2.bat
+
+diff --git a/deploy/cloudflared-http2.bat b/deploy/cloudflared-http2.bat
+new file mode 100644
+index 0000000..7c07411
+--- /dev/null
++++ b/deploy/cloudflared-http2.bat
+@@ -0,0 +1,28 @@
++@echo off
++rem ============================================================================
++rem Start the noname Cloudflare tunnel with HTTP/2 instead of QUIC.
++rem Why: on this network QUIC gave ~6 KB/s while HTTP/2 gives ~25-42 KB/s
++rem      (measured 2026-10-07; see the online-server doc, section 9).
++rem
++rem Token: read from (in this order)
++rem   1) env var CLOUDFLARED_TUNNEL_TOKEN
++rem   2) file <repo root>\.cloudflare-tunnel-token   (single line, no quotes)
++rem Keep that file private - it is git-ignored.
++rem
++rem NOTE: this .bat must stay PURE ASCII. Chinese characters in a .bat get
++rem garbled by cmd's OEM code page and break the script (see the intranet
++rem guide, section 7.5) - that is why every line here is English only.
++rem ============================================================================
++chcp 65001 >nul
++setlocal
++set "EXE=C:\Program Files (x86)\cloudflared\cloudflared.exe"
++set "TOKEN=%CLOUDFLARED_TUNNEL_TOKEN%"
++if not defined TOKEN if exist "%~dp0..\.cloudflare-tunnel-token" set /p TOKEN=<"%~dp0..\.cloudflare-tunnel-token"
++if not defined TOKEN (
++  echo [ERROR] tunnel token not found.
++  echo         set CLOUDFLARED_TUNNEL_TOKEN, or create .cloudflare-tunnel-token in the repo root.
++  exit /b 1
++)
++echo [noname] starting cloudflared with --protocol=http2
++"%EXE%" tunnel run --protocol=http2 --token "%TOKEN%"
++endlocal

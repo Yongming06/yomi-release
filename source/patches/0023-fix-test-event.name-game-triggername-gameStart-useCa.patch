@@ -1,0 +1,85 @@
+From f42233d6e03cf152ec1e1325e33d964cafa5c5da Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 19:48:21 +0800
+Subject: [PATCH 23/37] =?UTF-8?q?fix(test):=20=E3=80=90=E7=9C=8B=E7=A0=B4?=
+ =?UTF-8?q?=E3=80=91=E5=88=A0=E6=8E=A2=E9=92=88=EF=BC=88=E5=AE=9E=E6=B5=8B?=
+ =?UTF-8?q?=20event.name=3Dgame/triggername=3DgameStart=EF=BC=8C=E8=AF=81?=
+ =?UTF-8?q?=E5=AE=9E=E5=8E=9F=E5=86=99=E6=B3=95=E6=81=92=E5=81=87=EF=BC=89?=
+ =?UTF-8?q?=EF=BC=9B=E3=80=90=E6=B5=8B=E8=AF=95=C2=B7=E6=8C=87=E6=8C=A5?=
+ =?UTF-8?q?=E3=80=91=E9=80=89=E5=88=B0=E5=BA=94=E5=AF=B9=E7=89=8C=E6=94=B9?=
+ =?UTF-8?q?=E4=B8=BA=E8=B5=B0=E6=9A=97=E7=BD=AE=E6=B5=81=E7=A8=8B=EF=BC=88?=
+ =?UTF-8?q?=E5=8E=9F=20useCard=20=E5=AF=B9=20enable:false=20=E7=9A=84?=
+ =?UTF-8?q?=E5=BA=94=E5=AF=B9=E7=89=8C=E7=AD=89=E4=BA=8E=E6=97=A0=E6=95=88?=
+ =?UTF-8?q?=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/_yomi_errors.log                  |  0
+ apps/core/character/yomi_char_test/skill.js | 41 +++++++++++++++++----
+ 2 files changed, 33 insertions(+), 8 deletions(-)
+ create mode 100644 apps/core/_yomi_errors.log
+
+diff --git a/apps/core/_yomi_errors.log b/apps/core/_yomi_errors.log
+new file mode 100644
+index 0000000..e69de29
+diff --git a/apps/core/character/yomi_char_test/skill.js b/apps/core/character/yomi_char_test/skill.js
+index c1844df..05044c0 100644
+--- a/apps/core/character/yomi_char_test/skill.js
++++ b/apps/core/character/yomi_char_test/skill.js
+@@ -39,14 +39,13 @@ const skills = {
+ 		silent: true,
+ 		trigger: { global: ["gameStart", "phaseBegin"] },
+ 		filter(event, player, triggername) {
+-			// ★ 2026-10-08：改用**第三参** triggername（规范第 2 条）。
+-			//   原因：filter 第一参是「源事件」——gameStart 由 mode 的 start 数组（game 事件的 content）触发，
+-			//   源事件 name 是 "game" 而不是 "gameStart"；phaseBegin 的源事件 name 是 "phase"。
+-			//   原来写 `event.name === "gameStart"` 很可能恒假 → 开局那次「看破」从没生效过。
+-			//   ⚠️ 临时探针：把两个值都写进 _yomi_errors.log，跑一局即可确证（确认后删掉这一行）。
+-			if (typeof window !== "undefined" && window.__yomiProbe) {
+-				window.__yomiProbe("[看破探针] event.name=" + event.name + " triggername=" + triggername + " player=" + (player && player.name));
+-			}
++			// ★ 2026-10-08 实测确证：改用**第三参** triggername（规范第 2 条）。
++			//   探针输出（见 _yomi_errors.log）：
++			//     event.name=game    triggername=gameStart
++			//     event.name=phase   triggername=phaseBegin
++			//   → filter 第一参是「源事件」：gameStart 的源事件是 game 事件的 content（name 为 "game"）、
++			//     phaseBegin 的源事件 name 为 "phase"。所以原来 `event.name === "gameStart"` **恒假**，
++			//     开局那次「看破」从未生效（只有自己回合那半条在工作）。
+ 			return triggername === "gameStart" || event.player === player;
+ 		},
+ 		async content(event, trigger, player) {
+@@ -282,6 +281,32 @@ const skills = {
+ 				game.log(player, "【测试·指挥】未能解析牌名：", name, "（原始 link：）", link);
+ 				return;
+ 			}
++			// ★ 2026-10-08：应对/奥秘牌**不能直接使用**（卡面 enable:false、content 是空占位），
++			//   用 useCard 强制使用等于「什么都没发生」（用户实机反馈「让其他角色使用应对牌失败了」）。
++			//   测试时真正想要的是「让某人暗置这张应对」→ 直接走暗置流程（与「测试·挂应对」同款）。
++			if (lib.card[name].yomi_respond) {
++				const api = lib.yomiRespond;
++				if (!api) {
++					game.log(player, "【测试·指挥】无法暗置应对牌：本局未加载 yomi_pack_reactive（应对/奥秘包）");
++					return;
++				}
++				if ((actor.storage.yomi_respond_cards || []).length) {
++					game.log(player, "【测试·指挥】", actor, "已经挂了一张应对牌，先等它结算或刷新重开");
++					return;
++				}
++				const rcard = game.createCard(name);
++				if (get.owner(rcard) !== actor) {
++					await actor.gain(rcard, "gain2");
++				}
++				api.register(actor, rcard);
++				await actor.lose(rcard, ui.special);
++				game.log(player, "【测试·指挥】令", actor, "暗置了", rcard);
++				return;
++			}
++			if (lib.card[name].yomi_aomi) {
++				game.log(player, "【测试·指挥】奥秘牌（", get.translation(name), "）不能直接使用，请用正常暗置流程");
++				return;
++			}
+ 			const t2 = await player
+ 				.chooseTarget({
+ 					prompt: `测试·指挥：选择【${get.translation(name)}】的目标`,

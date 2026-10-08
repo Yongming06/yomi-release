@@ -1,0 +1,106 @@
+From 220bc009f4ddb423ba53ee80e1a9998f7883cb45 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Wed, 7 Oct 2026 18:14:14 +0800
+Subject: [PATCH 09/37] =?UTF-8?q?fix(deploy):=20cloudflared-http2.bat=20?=
+ =?UTF-8?q?=E7=9A=84=20token=20=E6=9F=A5=E6=89=BE=E8=B7=AF=E5=BE=84?=
+ =?UTF-8?q?=E4=BF=AE=E6=AD=A3=EF=BC=88=E5=B7=A5=E4=BD=9C=E5=8C=BA=E6=A0=B9?=
+ =?UTF-8?q?=20+=20noname=20=E6=A0=B9=EF=BC=89=EF=BC=8C=E5=B9=B6=E5=BF=BD?=
+ =?UTF-8?q?=E7=95=A5=20token=20=E6=96=87=E4=BB=B6?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .gitignore                   | 50 +++++++++++++++++++-----------------
+ deploy/cloudflared-http2.bat | 10 +++++---
+ 2 files changed, 33 insertions(+), 27 deletions(-)
+
+diff --git a/.gitignore b/.gitignore
+index 583e5d2..c1dccdc 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,25 +1,29 @@
+-dist
+-output
+-node_modules
+-package-lock.json
+-
+-# IDE
+-.idea/
+-.vscode/
+-
+-# macOS
+-._*
+-.Spotlight-V100
+-.Trashes
+-.DS_Store
+-.DS_Store?
+-
+-# Windows
+-ehthumbs.db
+-Thumbs.db
+-
+-# Skill for private use
+-.agents/skills/*-selfuse
++dist
++output
++node_modules
++package-lock.json
++
++# IDE
++.idea/
++.vscode/
++
++# macOS
++._*
++.Spotlight-V100
++.Trashes
++.DS_Store
++.DS_Store?
++
++# Windows
++ehthumbs.db
++Thumbs.db
++
++# Skill for private use
++.agents/skills/*-selfuse
+ 
+ # 本项目自制内容整理：Electron 缓存（130MB，与代码无关）
+-.electron-cache/
++.electron-cache/
++
++# 隧道 token（敏感，绝不入库）
++.cloudflare-tunnel-token
++*.tunnel-token
+diff --git a/deploy/cloudflared-http2.bat b/deploy/cloudflared-http2.bat
+index 7c07411..7aec385 100644
+--- a/deploy/cloudflared-http2.bat
++++ b/deploy/cloudflared-http2.bat
+@@ -4,10 +4,11 @@ rem Start the noname Cloudflare tunnel with HTTP/2 instead of QUIC.
+ rem Why: on this network QUIC gave ~6 KB/s while HTTP/2 gives ~25-42 KB/s
+ rem      (measured 2026-10-07; see the online-server doc, section 9).
+ rem
+-rem Token: read from (in this order)
++rem Token lookup order:
+ rem   1) env var CLOUDFLARED_TUNNEL_TOKEN
+-rem   2) file <repo root>\.cloudflare-tunnel-token   (single line, no quotes)
+-rem Keep that file private - it is git-ignored.
++rem   2) <workspace root>\.cloudflare-tunnel-token   (i.e. two levels above this .bat)
++rem   3) <noname repo root>\.cloudflare-tunnel-token (one level above this .bat)
++rem Single line, no quotes, no BOM. Both files are git-ignored - keep them private.
+ rem
+ rem NOTE: this .bat must stay PURE ASCII. Chinese characters in a .bat get
+ rem garbled by cmd's OEM code page and break the script (see the intranet
+@@ -17,10 +18,11 @@ chcp 65001 >nul
+ setlocal
+ set "EXE=C:\Program Files (x86)\cloudflared\cloudflared.exe"
+ set "TOKEN=%CLOUDFLARED_TUNNEL_TOKEN%"
++if not defined TOKEN if exist "%~dp0..\..\.cloudflare-tunnel-token" set /p TOKEN=<"%~dp0..\..\.cloudflare-tunnel-token"
+ if not defined TOKEN if exist "%~dp0..\.cloudflare-tunnel-token" set /p TOKEN=<"%~dp0..\.cloudflare-tunnel-token"
+ if not defined TOKEN (
+   echo [ERROR] tunnel token not found.
+-  echo         set CLOUDFLARED_TUNNEL_TOKEN, or create .cloudflare-tunnel-token in the repo root.
++  echo         Looked at: %CLOUDFLARED_TUNNEL_TOKEN%, %~dp0..\..\.cloudflare-tunnel-token, %~dp0..\.cloudflare-tunnel-token
+   exit /b 1
+ )
+ echo [noname] starting cloudflared with --protocol=http2

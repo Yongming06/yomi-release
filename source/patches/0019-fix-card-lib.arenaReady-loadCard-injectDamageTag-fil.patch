@@ -1,0 +1,118 @@
+From 8bc4a95af37204066f0466563cfeff43b52c717d Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 18:35:54 +0800
+Subject: [PATCH 19/37] =?UTF-8?q?fix(card):=20=E5=85=A8=E5=B1=80=E6=8A=80?=
+ =?UTF-8?q?=E8=83=BD=E6=B3=A8=E5=86=8C=E6=94=B9=E7=94=A8=20lib.arenaReady?=
+ =?UTF-8?q?=EF=BC=88=E6=99=9A=E4=BA=8E=20loadCard=EF=BC=89=E2=80=94?=
+ =?UTF-8?q?=E2=80=94=E4=BF=AE=E5=BA=94=E5=AF=B9/=E5=A5=A5=E7=A7=98?=
+ =?UTF-8?q?=E5=85=A5=E5=8F=A3=E6=8C=89=E9=92=AE=E5=81=B6=E5=8F=91=E6=B6=88?=
+ =?UTF-8?q?=E5=A4=B1=EF=BC=9BinjectDamageTag=20=E5=90=8C=E6=AD=A5=EF=BC=9B?=
+ =?UTF-8?q?=E5=BA=94=E5=AF=B9=20filter=20=E6=B8=85=E7=90=86=E8=A1=A5?=
+ =?UTF-8?q?=E5=BC=83=E7=89=8C+=E8=87=AA=E6=84=88?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/card/yomi_pack_core.js     | 15 +++++++++++--
+ apps/core/card/yomi_pack_reactive.js | 33 +++++++++++++++++++++-------
+ 2 files changed, 38 insertions(+), 10 deletions(-)
+
+diff --git a/apps/core/card/yomi_pack_core.js b/apps/core/card/yomi_pack_core.js
+index 01a6a9f..5a91ca1 100644
+--- a/apps/core/card/yomi_pack_core.js
++++ b/apps/core/card/yomi_pack_core.js
+@@ -943,7 +943,14 @@ function registerWeizaoWatch() {
+ 	// 顺带注册【生日蛋糕】的准备阶段使用入口（同样是"对所有人生效"的技能）
+ 	registerGlobalSkill("yomi_shengri_danggao_use");
+ }
+-[0, 300, 1000, 3000].forEach(t => setTimeout(registerWeizaoWatch, t));
++[0, 300, 1000, 3000, 8000, 15000, 30000].forEach(t => setTimeout(registerWeizaoWatch, t));
++// ★ 正确时机是 lib.arenaReady（晚于 loadCard、早于玩家创建）；lib.onload / lib.onload2 都太早，
++//   详见 yomi_pack_reactive.js 同位置的注释（2026-10-08 复查结论）。
++if (lib.arenaReady && typeof lib.arenaReady.push === "function") {
++	lib.arenaReady.push(registerWeizaoWatch);
++} else {
++	registerWeizaoWatch();
++}
+ 
+ /**
+  * 给**所有会造成伤害的自制卡**统一补上引擎标准标签 `ai.tag.damage`。
+@@ -977,4 +984,8 @@ function injectDamageTag() {
+ 		info.ai.tag = Object.assign({ damage: 1 }, info.ai.tag);
+ 	}
+ }
+-[0, 300, 1000, 3000].forEach(t => setTimeout(injectDamageTag, t));
++[0, 300, 1000, 3000, 8000, 15000, 30000].forEach(t => setTimeout(injectDamageTag, t));
++// ★ 同源修复：injectDamageTag 也依赖 lib.card（loadCard 之后才有），只靠 setTimeout 会静默失效
++if (lib.arenaReady && typeof lib.arenaReady.push === "function") {
++	lib.arenaReady.push(injectDamageTag);
++}
+diff --git a/apps/core/card/yomi_pack_reactive.js b/apps/core/card/yomi_pack_reactive.js
+index 27c1015..cdb03cd 100644
+--- a/apps/core/card/yomi_pack_reactive.js
++++ b/apps/core/card/yomi_pack_reactive.js
+@@ -930,13 +930,12 @@ export default {
+ 					//   只要 记录 / 观察者 / 标记 / 牌的标记 任一缺失，就说明这套状态是脏数据，
+ 					//   立刻整体重置（否则会永久卡在「上限 1 张」的分支里，再也暗置不了）。
+ 					const card = hanging[0];
+-					const valid =
+-						player.hasSkill("yomi_respond_watch") &&
+-						!!card &&
+-						!!card.storage &&
+-						card.storage.yomi_respond === true &&
+-						player.countMark("yomi_mark_respond") > 0;
++					// ★ 判据不再包含 hasSkill("yomi_respond_watch")：技能在「失效」窗口内 hasSkill 会变 false
++					//   （game.filterSkills 会剔除 disabledSkills），一次临时失效就会误判成脏数据、清掉合法暗置（复查 medium）。
++					const valid = !!card && !!card.storage && card.storage.yomi_respond === true && player.countMark("yomi_mark_respond") > 0;
+ 					if (!valid) {
++						// ★ 清理时**必须把牌送进弃牌堆**，否则它滞留 ui.special 无人追踪 = 从牌局蒸发（复查 medium）
++						if (card) game.cardsDiscard([card]);
+ 						delete player.storage.yomi_respond_cards;
+ 						const n = player.countMark("yomi_mark_respond");
+ 						if (n > 0) {
+@@ -945,6 +944,8 @@ export default {
+ 						player.removeSkill("yomi_respond_watch");
+ 						game.log(player, "的应对状态已重置（此前处于异常残留）");
+ 					} else {
++						// 自愈：状态是好的、只是观察者技能被临时禁用/丢失 → 补回来，而不是清掉合法暗置
++						if (!player.hasSkill("yomi_respond_watch")) player.addSkill("yomi_respond_watch");
+ 						return false;
+ 					}
+ 				}
+@@ -1536,7 +1537,9 @@ export default {
+  */
+ function registerGlobalSkill(name) {
+ 	if (!lib.skill || !lib.skill[name]) {
+-		return;
++		// ★ 别静默跳过：注册失败与成功在外部完全不可区分，正是「按钮消失很久查不出原因」的根源
++		console.warn("[yomi] 全局技能注册时机过早，lib.skill 里还没有：", name);
++		return false;
+ 	}
+ 	// ★ 用 game.addGlobalSkill：它除了加进 lib.skill.global，还会注册技能的 trigger
+ 	//   （lib.hook.globalskill，见 game/index.js:6316-6345）。对没有 trigger 的技能
+@@ -1568,9 +1571,23 @@ function registerRespondSkills() {
+ 	registerGlobalSkill("yomi_mark_respond");
+ }
+ // 多时间点尝试，覆盖各种初始化时序（重复注册无害）
+-[0, 300, 1000, 3000].forEach(t =>
++[0, 300, 1000, 3000, 8000, 15000, 30000].forEach(t =>
+ 	setTimeout(() => {
+ 		registerAomiUseSkill();
+ 		registerRespondSkills();
+ 	}, t)
+ );
++// ★ 正确时机是 lib.arenaReady（init/index.ts:597 由 ui.create.arena() 排空；ui/create/index.js:3133-3136）：
++//   它**晚于** loadCard（init/index.ts:530 才把卡包 skill 写进 lib.skill），又早于任何玩家被创建。
++//   ⚠️ 别用 lib.onload / lib.onload2：它们在 init/index.ts:361-363 / 509 就执行了，比 loadCard 早，
++//      回调里 lib.skill[name] 仍是 undefined → registerGlobalSkill 静默 return（2026-10-08 踩过）。
++//   （本体同款写法见 init/loading.ts:260-263。）setTimeout 那几档只作兜底。
++const _yomiRegisterAll = () => {
++	registerAomiUseSkill();
++	registerRespondSkills();
++};
++if (lib.arenaReady && typeof lib.arenaReady.push === "function") {
++	lib.arenaReady.push(_yomiRegisterAll);
++} else {
++	_yomiRegisterAll();
++}

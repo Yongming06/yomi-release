@@ -1,0 +1,361 @@
+From c70b8ad908a6345241e5f6b383ac0a6af7a4fa97 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 19:25:01 +0800
+Subject: [PATCH 22/37] =?UTF-8?q?chore(dev):=20index.html=20=E5=8A=A0?=
+ =?UTF-8?q?=E3=80=8C=E4=BB=85=E6=9C=AC=E5=9C=B0=E7=94=9F=E6=95=88=E3=80=8D?=
+ =?UTF-8?q?=E7=9A=84=E6=8A=A5=E9=94=99=E8=90=BD=E7=9B=98=E9=92=A9=E5=AD=90?=
+ =?UTF-8?q?=EF=BC=88=E5=90=AB=E4=BA=8B=E4=BB=B6=E9=93=BE=EF=BC=89=EF=BC=9B?=
+ =?UTF-8?q?yomi=5Fchar=5Ftest=E3=80=90=E7=9C=8B=E7=A0=B4=E3=80=91filter=20?=
+ =?UTF-8?q?=E6=94=B9=E7=AC=AC=E4=B8=89=E5=8F=82=E5=B9=B6=E5=8A=A0=E4=B8=B4?=
+ =?UTF-8?q?=E6=97=B6=E6=8E=A2=E9=92=88=EF=BC=9Bcompose=20=E9=87=8A?=
+ =?UTF-8?q?=E6=94=BE=20127.0.0.1:8089=20=E7=BB=99=20dev=20fs=20=E6=9C=8D?=
+ =?UTF-8?q?=E5=8A=A1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/_yomi_probe.txt                   |   1 +
+ apps/core/character/yomi_char_test/skill.js |  12 +-
+ apps/core/index.html                        | 283 ++++++++++++--------
+ deploy/docker-compose.yml                   |   2 +-
+ 4 files changed, 189 insertions(+), 109 deletions(-)
+ create mode 100644 apps/core/_yomi_probe.txt
+
+diff --git a/apps/core/_yomi_probe.txt b/apps/core/_yomi_probe.txt
+new file mode 100644
+index 0000000..67b8848
+--- /dev/null
++++ b/apps/core/_yomi_probe.txt
+@@ -0,0 +1 @@
++yomi-probe-ok
+\ No newline at end of file
+diff --git a/apps/core/character/yomi_char_test/skill.js b/apps/core/character/yomi_char_test/skill.js
+index 0dde127..c1844df 100644
+--- a/apps/core/character/yomi_char_test/skill.js
++++ b/apps/core/character/yomi_char_test/skill.js
+@@ -38,8 +38,16 @@ const skills = {
+ 		popup: false,
+ 		silent: true,
+ 		trigger: { global: ["gameStart", "phaseBegin"] },
+-		filter(event, player) {
+-			return event.name === "gameStart" || event.player === player;
++		filter(event, player, triggername) {
++			// ★ 2026-10-08：改用**第三参** triggername（规范第 2 条）。
++			//   原因：filter 第一参是「源事件」——gameStart 由 mode 的 start 数组（game 事件的 content）触发，
++			//   源事件 name 是 "game" 而不是 "gameStart"；phaseBegin 的源事件 name 是 "phase"。
++			//   原来写 `event.name === "gameStart"` 很可能恒假 → 开局那次「看破」从没生效过。
++			//   ⚠️ 临时探针：把两个值都写进 _yomi_errors.log，跑一局即可确证（确认后删掉这一行）。
++			if (typeof window !== "undefined" && window.__yomiProbe) {
++				window.__yomiProbe("[看破探针] event.name=" + event.name + " triggername=" + triggername + " player=" + (player && player.name));
++			}
++			return triggername === "gameStart" || event.player === player;
+ 		},
+ 		async content(event, trigger, player) {
+ 			for (const target of game.filterPlayer(current => current !== player)) {
+diff --git a/apps/core/index.html b/apps/core/index.html
+index ded7ad3..883a9f3 100644
+--- a/apps/core/index.html
++++ b/apps/core/index.html
+@@ -1,111 +1,182 @@
+-<!doctype html>
+-
+-<head>
+-	<meta charset="UTF-8" />
+-	<!-- 不自动检查电话号码 -->
+-	<meta name="format-detection" content="telephone=no" />
+-	<!-- 手机端网页不显示地址栏 -->
+-	<meta name="mobile-web-app-capable" content="yes" />
+-	<!-- 禁止缩放 手机端全屏 -->
+-	<meta name="viewport" content="user-scalable=no, viewport-fit=cover" />
+-	<title>无名杀</title>
++<!doctype html>
++
++<head>
++	<meta charset="UTF-8" />
++	<!-- 不自动检查电话号码 -->
++	<meta name="format-detection" content="telephone=no" />
++	<!-- 手机端网页不显示地址栏 -->
++	<meta name="mobile-web-app-capable" content="yes" />
++	<!-- 禁止缩放 手机端全屏 -->
++	<meta name="viewport" content="user-scalable=no, viewport-fit=cover" />
++	<title>无名杀</title>
++	
+ 	<script>
+-		"use strict";
+-		(() => {
+-			window.onerror = function (msg, src, line, column, err) {
+-				let str = `错误文件: ${typeof src == "string" && src.length > 0 ? decodeURI(src) : "未知文件"}`;
+-				str += `\n错误信息: ${msg}`;
+-				str += `\n行号: ${line}`;
+-				str += `\n列号: ${column}`;
+-				if (err && err.stack) str += "\n" + decodeURI(err.stack);
+-				console.error(str);
+-				alert(str);
+-			};
+-			const STACK_REGEXP = /^\s*at .*(\S+:\d+|\(native\))/m;
+-			const errorList = [];
+-			function extractLocation(urlLike) {
+-				// 不存在地址信息的字符串
+-				if (!/:/.test(urlLike)) {
+-					return [urlLike];
+-				}
+-
+-				// 捕获位置用到的正则
+-				const regExp = /(.+?)(?::(\d+))?(?::(\d+))?$/;
+-				const parts = regExp.exec(urlLike.replace(/[()]/g, ""));
+-
+-				// @ts-ignore
+-				return [parts[1], parts[2] || void 0, parts[3] || void 0];
+-			}
+-			window.onunhandledrejection = async event => {
+-				event.promise.catch(error => {
+-					console.log(error);
+-					// 如果`error`是个错误，则继续处理
+-					if (error instanceof Error) {
+-						// 如果已经处理过该错误，则不再处理
+-						if (errorList.includes(error)) return;
+-						errorList.push(error);
+-						// 如果`error`拥有字符串形式的报错栈堆，且报错栈堆确实符合v8的stack
+-						if (typeof error.stack === "string" && STACK_REGEXP.test(error.stack)) {
+-							// 获取符合栈堆信息的字符串，一般来说就是从第二行开始的所有行
+-							// 为了处理eval的情况，故必须获取完行数
+-							let lines = error.stack.split("\n").filter(line => STACK_REGEXP.test(line));
+-
+-							// 提供类型信息防止vscode报错
+-							/**
+-							 * @type {string | undefined}
+-							 */
+-							let fileName = void 0;
+-
+-							/**
+-							 * @type {number | undefined}
+-							 */
+-							let line = void 0;
+-
+-							/**
+-							 * @type {number | undefined}
+-							 */
+-							let column = void 0;
+-
+-							// 从第一条开始遍历，一直遍历到不存在eval的位置
+-							for (let currentLine = 0; currentLine < lines.length; ++currentLine) {
+-								if (/\(eval /.test(lines[currentLine])) continue;
+-
+-								let formatedLine = lines[currentLine]
+-									.replace(/^\s+/, "")
+-									.replace(/\(eval code/g, "(")
+-									.replace(/^.*?\s+/, "");
+-
+-								const location = formatedLine.match(/ (\(.+\)$)/);
+-								if (location) formatedLine = formatedLine.replace(location[0], "");
+-
+-								const locationParts = extractLocation(location ? location[1] : formatedLine);
+-
+-								fileName = ["eval", "<anonymous>"].includes(locationParts[0]) ? void 0 : locationParts[0];
+-								line = Number(locationParts[1]);
+-								column = Number(locationParts[2]);
+-								break;
+-							}
+-
+-							// @ts-ignore
+-							window.onerror(error.message, fileName, line, column, error);
+-						}
+-						// 反之我们只能不考虑报错文件信息，直接调用onerror
+-						else {
+-							try {
+-								// @ts-ignore
+-								let [_, src = void 0, line = void 0, column = void 0] = /at\s+.*\s+\((.*):(\d*):(\d*)\)/i.exec(error.stack.split("\n")[1]);
+-								if (typeof line == "string") line = Number(line);
+-								if (typeof column == "string") column = Number(column);
+-								// @ts-ignore
+-								window.onerror(error.message, src, line, column, error);
+-							} catch (e) {
+-								window.onerror(error.message, "", 0, 0, error);
+-							}
+-						}
++		// ====================================================================
++		// 【仅本地开发生效】游戏报错自动落盘，供开发者/AI 事后排查（不会出现在联机/正式环境）
++		//   落盘位置：<游戏根>/_yomi_errors.log（走游戏自己的文件后端，dev 下即 apps/core/）
++		//   内容：时间 + 错误信息 + 当时的 _status.event 事件链 + 栈
++		// ====================================================================
++		(function () {
++			const isDev = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname);
++			if (!isDev) return;
++			const FILE = "_yomi_errors.log";
++			let queue = Promise.resolve();
++			const describeEvent = () => {
++				try {
++					const evt = window._status && window._status.event;
++					if (!evt) return "(无 _status.event)";
++					const names = [];
++					let cur = evt;
++					for (let i = 0; i < 6 && cur; i++) {
++						names.push((cur.name || "?") + (cur.step != null ? ":" + cur.step : ""));
++						cur = cur.getParent ? cur.getParent() : null;
+ 					}
+-				});
++					return names.join(" <- ");
++				} catch (e) {
++					return "(读取事件链失败: " + e + ")";
++				}
++			};
++			const append = text => {
++				queue = queue
++					.then(async () => {
++						let old = "";
++						try {
++							const r = await fetch("/readFileAsText?fileName=" + FILE);
++							const j = await r.json();
++							if (j && j.success && typeof j.data === "string") old = j.data;
++						} catch (e) {}
++						const line =
++							"\n===== " +
++							new Date().toISOString() +
++							" =====\n" +
++							text +
++							"\n当时事件链: " +
++							describeEvent() +
++							"\n";
++						const data = Array.from(new TextEncoder().encode(old + line));
++						await fetch("/writeFile", {
++							method: "POST",
++							headers: { "Content-Type": "application/json" },
++							body: JSON.stringify({ path: FILE, data }),
++						});
++					})
++					.catch(() => {});
++			};
++			window.addEventListener("error", e => {
++				append("【window.onerror】" + (e.message || "") + "\n 文件: " + (e.filename || "?") + ":" + (e.lineno || "?") + ":" + (e.colno || "?") + "\n 栈: " + (e.error && e.error.stack ? e.error.stack : "(无)"));
++			});
++			window.addEventListener("unhandledrejection", e => {
++				const r = e.reason;
++				append("【unhandledrejection】" + (r && r.message ? r.message : String(r)) + "\n 栈: " + (r && r.stack ? r.stack : "(无)"));
++			});
++			const origError = console.error;
++			console.error = function (...args) {
++				try {
++					append("【console.error】" + args.map(a => (a && a.stack ? a.stack : String(a))).join(" "));
++				} catch (e) {}
++				return origError.apply(console, args);
+ 			};
++			// 提供一个手动探针：控制台执行 __yomiProbe("说明") 即可把当前事件链写进日志
++			window.__yomiProbe = msg => append("【手动探针】" + (msg || ""));
+ 		})();
+ 	</script>
+-	<script type="module" src="./noname/entry.ts"></script>
+-</head>
++	<script>
++		"use strict";
++		(() => {
++			window.onerror = function (msg, src, line, column, err) {
++				let str = `错误文件: ${typeof src == "string" && src.length > 0 ? decodeURI(src) : "未知文件"}`;
++				str += `\n错误信息: ${msg}`;
++				str += `\n行号: ${line}`;
++				str += `\n列号: ${column}`;
++				if (err && err.stack) str += "\n" + decodeURI(err.stack);
++				console.error(str);
++				alert(str);
++			};
++			const STACK_REGEXP = /^\s*at .*(\S+:\d+|\(native\))/m;
++			const errorList = [];
++			function extractLocation(urlLike) {
++				// 不存在地址信息的字符串
++				if (!/:/.test(urlLike)) {
++					return [urlLike];
++				}
++
++				// 捕获位置用到的正则
++				const regExp = /(.+?)(?::(\d+))?(?::(\d+))?$/;
++				const parts = regExp.exec(urlLike.replace(/[()]/g, ""));
++
++				// @ts-ignore
++				return [parts[1], parts[2] || void 0, parts[3] || void 0];
++			}
++			window.onunhandledrejection = async event => {
++				event.promise.catch(error => {
++					console.log(error);
++					// 如果`error`是个错误，则继续处理
++					if (error instanceof Error) {
++						// 如果已经处理过该错误，则不再处理
++						if (errorList.includes(error)) return;
++						errorList.push(error);
++						// 如果`error`拥有字符串形式的报错栈堆，且报错栈堆确实符合v8的stack
++						if (typeof error.stack === "string" && STACK_REGEXP.test(error.stack)) {
++							// 获取符合栈堆信息的字符串，一般来说就是从第二行开始的所有行
++							// 为了处理eval的情况，故必须获取完行数
++							let lines = error.stack.split("\n").filter(line => STACK_REGEXP.test(line));
++
++							// 提供类型信息防止vscode报错
++							/**
++							 * @type {string | undefined}
++							 */
++							let fileName = void 0;
++
++							/**
++							 * @type {number | undefined}
++							 */
++							let line = void 0;
++
++							/**
++							 * @type {number | undefined}
++							 */
++							let column = void 0;
++
++							// 从第一条开始遍历，一直遍历到不存在eval的位置
++							for (let currentLine = 0; currentLine < lines.length; ++currentLine) {
++								if (/\(eval /.test(lines[currentLine])) continue;
++
++								let formatedLine = lines[currentLine]
++									.replace(/^\s+/, "")
++									.replace(/\(eval code/g, "(")
++									.replace(/^.*?\s+/, "");
++
++								const location = formatedLine.match(/ (\(.+\)$)/);
++								if (location) formatedLine = formatedLine.replace(location[0], "");
++
++								const locationParts = extractLocation(location ? location[1] : formatedLine);
++
++								fileName = ["eval", "<anonymous>"].includes(locationParts[0]) ? void 0 : locationParts[0];
++								line = Number(locationParts[1]);
++								column = Number(locationParts[2]);
++								break;
++							}
++
++							// @ts-ignore
++							window.onerror(error.message, fileName, line, column, error);
++						}
++						// 反之我们只能不考虑报错文件信息，直接调用onerror
++						else {
++							try {
++								// @ts-ignore
++								let [_, src = void 0, line = void 0, column = void 0] = /at\s+.*\s+\((.*):(\d*):(\d*)\)/i.exec(error.stack.split("\n")[1]);
++								if (typeof line == "string") line = Number(line);
++								if (typeof column == "string") column = Number(column);
++								// @ts-ignore
++								window.onerror(error.message, src, line, column, error);
++							} catch (e) {
++								window.onerror(error.message, "", 0, 0, error);
++							}
++						}
++					}
++				});
++			};
++		})();
++	</script>
++	<script type="module" src="./noname/entry.ts"></script>
++</head>
+diff --git a/deploy/docker-compose.yml b/deploy/docker-compose.yml
+index 4248329..831b239 100644
+--- a/deploy/docker-compose.yml
++++ b/deploy/docker-compose.yml
+@@ -29,7 +29,7 @@ services:
+         container_name: noname_online
+         ports:
+             # 只绑「回环 + ZeroTier 网卡」：本机与 ZeroTier 网络内可访问，局域网访问不到
+-            - "127.0.0.1:8089:8089"
++            # ⚠️ 不要绑 127.0.0.1:8089：dev 的 fs 服务（pnpm dev → --dirname=../../apps/core）要用它，被占用会让 dev 游戏写不了配置/录像（EROFS，2026-10-08 实机发现）
+             - "127.0.0.1:8082:8082"
+             - "10.101.165.187:8089:8089"
+             - "10.101.165.187:8082:8082"

@@ -1,0 +1,127 @@
+From 53189ce9f561278a46241dc7daece65fa080963c Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Tue, 6 Oct 2026 20:17:07 +0800
+Subject: [PATCH 04/37] =?UTF-8?q?fix(engine):=20=E8=87=AA=E5=88=B6?=
+ =?UTF-8?q?=E5=8C=85=E7=99=BB=E8=AE=B0=20+=20vite=20watch=20=E5=BF=BD?=
+ =?UTF-8?q?=E7=95=A5=20.tmpdir=EF=BC=88=E9=98=B2=20EBUSY=20=E5=B4=A9=20Vit?=
+ =?UTF-8?q?e=EF=BC=89+=20=E8=87=AA=E5=88=B6=E5=8D=A1/=E6=8A=80=E8=83=BD?=
+ =?UTF-8?q?=E7=9B=B8=E5=85=B3=E5=BC=95=E6=93=8E=E5=B0=8F=E6=94=B9?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/game/package.js         | 11 +++++++++++
+ apps/core/noname/game/index.js    | 14 ++++++++++++++
+ apps/core/noname/library/index.js | 17 ++++++-----------
+ apps/core/vite.config.ts          |  8 ++++++++
+ 4 files changed, 39 insertions(+), 11 deletions(-)
+
+diff --git a/apps/core/game/package.js b/apps/core/game/package.js
+index f19ae93..4dc05b2 100644
+--- a/apps/core/game/package.js
++++ b/apps/core/game/package.js
+@@ -35,6 +35,10 @@ window.noname_package = {
+ 		//DIY系列
+ 		diy: "DIY",
+ 		key: "Key",
++		//自制系列（v0.31 拆分：原单包 `custom` → 「原神」/「测试」两包，武将 id / 技能 id 保持不变）
++		yomi_char_genshin: "原神",
++		yomi_char_test: "测试",
++		yomi_char_ba: "BA",
+ 	},
+ 	card: {
+ 		standard: "标准",
+@@ -46,6 +50,13 @@ window.noname_package = {
+ 		zhulu: "逐鹿天下",
+ 		huodong: "活动卡牌",
+ 		xianxia: "线下卡牌",
++		//自制系列
++		//自制主题卡包（卡牌实现方案 §八：一主题一包，可独立勾选 / 可单卡禁用）
++		yomi_pack_sanguo: "三国演义·正典",
++		yomi_pack_crossover: "跨界联动·异界来客",
++		yomi_pack_core: "原创核心·无色牌池",
++		yomi_pack_reactive: "机变·应对与奥秘",
++		yomi_pack_meme: "名场面·梗卡",
+ 	},
+ 	play: {
+ 		boss: "诸神降临",
+diff --git a/apps/core/noname/game/index.js b/apps/core/noname/game/index.js
+index 1566a63..a4ea98c 100644
+--- a/apps/core/noname/game/index.js
++++ b/apps/core/noname/game/index.js
+@@ -8838,6 +8838,20 @@ ${e instanceof Error ? e.stack : String(e)}`);
+ 				info.popup = false;
+ 			}
+ 		}
++		// ★ 本项目自制技能自动静默护栏（2026-10-04 v0.31）：
++		//   凡 `yomi_` 前缀、带 trigger 且 forced 的技能，一律补 `silent` ——
++		//   彻底杜绝多个同优先级技能同时触发时弹「选择下一个触发的技能」
++		//   （arrangeTrigger 见 library/element/content.ts:4017；silent 会让下面的 _priority +1，
++		//   同优先级组内也会被优先执行，因此不会再询问顺序）。
++		//   ⚠️ 可选（非 forced）技能**绝不能**自动加 silent —— 上面的 `if (info.silent)`
++		//   会把它强制变成 forced（技能不再询问玩家是否发动）。
++		if (typeof skillId === "string" && skillId.startsWith("yomi_") && info.trigger && info.forced === true && !("silent" in info)) {
++			info.silent = true;
++			// silent 默认会同时关掉技能名弹窗；这里显式补 popup，保留可见技能原有的视觉表现
++			if (!("popup" in info)) {
++				info.popup = !(info.sub || info.charlotte);
++			}
++		}
+ 		if (!("_priority" in info)) {
+ 			let priority = 0;
+ 			if (info.priority) {
+diff --git a/apps/core/noname/library/index.js b/apps/core/noname/library/index.js
+index b84a452..d1dc59d 100644
+--- a/apps/core/noname/library/index.js
++++ b/apps/core/noname/library/index.js
+@@ -1143,12 +1143,6 @@ export class Library {
+ 					unfrequent: true,
+ 					intro: "拆牌或者顺牌时，就算只能选择对方的手牌依然手动选择",
+ 				},
+-				wuxie_self: {
+-					name: "不无懈自己",
+-					init: true,
+-					unfrequent: true,
+-					intro: "自己使用的单目标普通锦囊即将生效时，不询问无懈",
+-				},
+ 				tao_enemy: {
+ 					name: "不对敌方出桃",
+ 					init: false,
+@@ -12007,11 +12001,12 @@ export class Library {
+ 					return true;
+ 				}
+ 			}
+-			if (!lib.config.wuxie_self) {
+-				return false;
+-			}
+-			const infoMap = event.info_map;
+-			return Boolean(infoMap.player && infoMap.player.isUnderControl(true) && !infoMap.player.hasSkillTag("noautowuxie") && (!infoMap.targets || infoMap.targets.length <= 1) && !infoMap.noai);
++			// ★ 本项目标准化（2026-10-04）：取消引擎默认的「不无懈自己」自动跳过。
++			// 规则依据：【无懈可击】响应的是**锦囊牌本身**，不是使用者；
++			//   只要锦囊尚未结算完，使用者自己也应被询问
++			//   （`card/standard.js` 的 `_wuxie` 候选名单本就不排除使用者）。
++			// 若玩家确实不想被询问，可用右上角「不询问无懈」（W 键）主动关闭。
++			return false;
+ 		},
+ 	};
+ 	sort = {
+diff --git a/apps/core/vite.config.ts b/apps/core/vite.config.ts
+index c9f23f1..97cac4e 100644
+--- a/apps/core/vite.config.ts
++++ b/apps/core/vite.config.ts
+@@ -20,6 +20,14 @@ export default defineConfig({
+ 	server: {
+ 		host: "127.0.0.1",
+ 		port: port.client,
++		// 忽略「临时目录 + 原子替换」式写入产生的中间文件。
++		// 某些编辑器/工具（如 DSH 的 write）会先在源文件旁建
++		//   .<文件名>.<pid>.<uuid>.tmpdir/<文件名>.tmp
++		// 再整体替换。Vite 的 fs watcher 若去 watch 这些 .tmp 文件，
++		// 在 Windows 上会抛 EBUSY（文件被锁定）并导致 Vite 进程直接崩溃。
++		watch: {
++			ignored: [/\.tmpdir([\\/]|$)/, /\.tmp$/],
++		},
+ 		fs: {
+ 			allow: ["../.."],
+ 		},

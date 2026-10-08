@@ -1,0 +1,293 @@
+From 9a7524bbd0af40c9599ad725e124cd7b0ceaf867 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 22:08:03 +0800
+Subject: [PATCH 36/37] =?UTF-8?q?fix:=20yomi=5Fchar=5Fba=20=E4=B8=89?=
+ =?UTF-8?q?=E4=B8=AA=E7=88=B6=E4=BA=8B=E4=BB=B6=E9=81=8D=E5=8E=86=E8=BE=85?=
+ =?UTF-8?q?=E5=8A=A9=E5=87=BD=E6=95=B0=E5=8A=A0=E5=85=A5=E5=8F=A3=E9=98=B2?=
+ =?UTF-8?q?=E5=BE=A1=EF=BC=88=E4=BF=AE=E5=AE=9E=E6=9C=BA=20evt.getParent?=
+ =?UTF-8?q?=20is=20not=20a=20function=EF=BC=89=EF=BC=9Bdev=20harness=20v10?=
+ =?UTF-8?q?=20=E6=8E=A5=E7=AE=A1=20alert=20=E4=B8=BA=E9=9D=9E=E9=98=BB?=
+ =?UTF-8?q?=E5=A1=9E=20+=20=E6=8A=A5=E9=94=99=E8=87=AA=E5=8A=A8=E8=B7=B3?=
+ =?UTF-8?q?=E8=BF=87=E6=9C=AC=E5=B1=80=E9=87=8D=E5=BC=80?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/_yomi_auto_report.txt           | 94 +++++------------------
+ apps/core/_yomi_devtools.js               | 50 +++++++++++-
+ apps/core/_yomi_errors.log                | 41 +++++++---
+ apps/core/character/yomi_char_ba/skill.js |  6 ++
+ 4 files changed, 103 insertions(+), 88 deletions(-)
+
+diff --git a/apps/core/_yomi_auto_report.txt b/apps/core/_yomi_auto_report.txt
+index c999fe7..2c47355 100644
+--- a/apps/core/_yomi_auto_report.txt
++++ b/apps/core/_yomi_auto_report.txt
+@@ -1,79 +1,23 @@
+-  [批次] total=20 done=2 本页 2026-10-08T13:46:07.680Z
++
++
++===== AUTO MATCH START 2026-10-08T13:59:55.605Z target 20 matches =====
++  [环境] url=http://127.0.0.1:8081/ 引擎就绪=false 武将库=0 含yomi的包=
++  [环境] characterPack 全部键=
++  [批次] total=20 done=0 本页 2026-10-08T13:59:55.645Z
+   [批次] 开局 mode=identity hero=(随机) 武将库=0
+-  [批次] total=20 done=2 本页 2026-10-08T13:46:17.876Z
++  [批次] total=20 done=0 本页 2026-10-08T14:00:05.002Z
+   [进局] 存活=8 auto=true 事件=chooseButton:0<-chooseCharacter:0<-game:4<-?:?
+-第 3/20 局：✅ over 用时 8s 新增报错行 0 存活 7 武将：吕布 / 日奈 / 巴巴托斯 / 花子 / 亚子（礼服） / 星野 / 梓
++    · 心跳 30s 存活=4 auto=true over=false imchoosing=false 事件=gain:4<-draw:0<-phaseDraw:2<-phase:9<-phaseLoop:0
++    · 心跳 60s 存活=3 auto=true over=false imchoosing=false 事件=gain:4<-draw:0<-rewangzun:0<-trigger:0<-arrangeTrigger:0
++第 1/20 局：✅ over 用时 69s 新增报错行 0 存活 1 武将：曹操
++  [下一局] 开局 mode=identity hero=星野（临战）攻击 武将库=25
++  [批次] total=20 done=1 本页 2026-10-08T14:01:17.636Z
++  [进局] 存活=8 auto=true 事件=useSkill:4<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
++第 2/20 局：✅ over 用时 17s 新增报错行 0 存活 3 武将：星野 / 夏侯惇 / 爱丽丝（临战）
++  [下一局] 开局 mode=identity hero=星野（临战）防御 武将库=25
++  [批次] total=20 done=2 本页 2026-10-08T14:01:37.492Z
++  [进局] 存活=8 auto=true 事件=chooseTarget:0<-yomi_ba_qianpai2:0<-trigger:0<-arrangeTrigger:0<-game:5
++第 3/20 局：✅ over 用时 21s 新增报错行 0 存活 4 武将：星野（临战）防御 / 甘宁 / 日奈（泳装） / 爱丽丝（女仆）
+   [下一局] 开局 mode=identity hero=梓 武将库=25
+-  [批次] total=20 done=3 本页 2026-10-08T13:46:28.671Z
+-  [进局] 存活=8 auto=true 事件=gain:4<-draw:0<-phaseDraw:2<-phase:9<-phaseLoop:0
+-第 4/20 局：✅ over 用时 6s 新增报错行 0 存活 7 武将：梓 / 张辽 / 日奈（礼服） / 星野（临战） / 孙尚香 / 诸葛亮 / 巴巴托斯
+-  [下一局] 开局 mode=identity hero=梓（泳装） 武将库=25
+-  [批次] total=20 done=4 本页 2026-10-08T13:46:37.917Z
+-  [进局] 存活=8 auto=true 事件=useCard:8<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
+-第 5/20 局：✅ over 用时 2s 新增报错行 0 存活 7 武将：梓（泳装） / 司马懿 / 日奈（泳装） / 星野（泳装） / 关羽 / 甘宁 / 爱丽丝（临战）
+-  [下一局] 开局 mode=identity hero=日奈（礼服） 武将库=25
+-  [批次] total=20 done=5 本页 2026-10-08T13:46:44.033Z
++  [批次] total=20 done=3 本页 2026-10-08T14:02:01.808Z
+   [进局] 存活=8 auto=true 事件=phase:9<-phaseLoop:0<-game:7<-?:?
+-第 6/20 局：✅ over 用时 30s 新增报错行 0 存活 3 武将：马超 / 曹操 / 标乐进
+-  [下一局] 开局 mode=identity hero=日奈（泳装） 武将库=25
+-  [批次] total=20 done=6 本页 2026-10-08T13:47:17.411Z
+-  [进局] 存活=8 auto=true 事件=chooseBool:0<-trigger:0<-arrangeTrigger:0<-phase:7<-phaseLoop:0
+-第 7/20 局：✅ over 用时 21s 新增报错行 0 存活 3 武将：孙权 / 星野（临战）攻击 / 梓（泳装）
+-  [下一局] 开局 mode=identity hero=日奈 武将库=25
+-  [批次] total=20 done=7 本页 2026-10-08T13:47:42.551Z
+-  [进局] 存活=8 auto=true 事件=gain:4<-draw:0<-phaseDraw:2<-phase:9<-phaseLoop:0
+-第 8/20 局：✅ over 用时 12s 新增报错行 0 存活 6 武将：日奈 / 优香（体操） / 优香 / 优香（睡衣） / 公孙瓒 / 孙尚香
+-  [下一局] 开局 mode=identity hero=爱丽丝（女仆） 武将库=25
+-  [批次] total=20 done=8 本页 2026-10-08T13:47:57.812Z
+-  [进局] 存活=8 auto=true 事件=useCard:16<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
+-第 9/20 局：✅ over 用时 9s 新增报错行 0 存活 6 武将：爱丽丝（女仆） / 张飞 / 赵云 / 星野 / 梓 / 诸葛亮
+-  [下一局] 开局 mode=identity hero=爱丽丝 武将库=25
+-  [批次] total=20 done=9 本页 2026-10-08T13:48:10.764Z
+-  [进局] 存活=8 auto=true 事件=gain:4<-draw:0<-phaseDraw:2<-phase:9<-phaseLoop:0
+-    · 心跳 30s 存活=5 auto=true over=false imchoosing=false 事件=useCard:8<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
+-    · 心跳 60s 存活=2 auto=true over=false imchoosing=false 事件=useCard:8<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
+-第 10/20 局：✅ over 用时 68s 新增报错行 14 存活 1 武将：星野（临战）防御
+-  [下一局] 开局 mode=identity hero=爱丽丝（临战） 武将库=25
+-  [批次] total=20 done=10 本页 2026-10-08T13:49:22.430Z
+-  [进局] 存活=8 auto=true 事件=gain:4<-gainPlayerCard:4<-shunshou:0<-useCard:12<-chooseToUse:4
+-第 11/20 局：✅ over 用时 29s 新增报错行 0 存活 7 武将：爱丽丝（临战） / 夏侯惇 / 巴巴托斯 / 张辽 / 司马懿 / 花子 / 亚子
+-  [下一局] 开局 mode=identity hero=凯伊 武将库=25
+-  [批次] total=20 done=11 本页 2026-10-08T13:49:54.227Z
+-  [进局] 存活=8 auto=true 事件=useSkill:2<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
+-第 12/20 局：✅ over 用时 18s 新增报错行 0 存活 7 武将：凯伊 / 雷电将军 / 花子 / 伊籍 / 诸葛亮 / 司马懿 / 星野（临战）
+-  [下一局] 开局 mode=identity hero=优香 武将库=25
+-  [批次] total=20 done=12 本页 2026-10-08T13:50:15.516Z
+-  [进局] 存活=8 auto=true 事件=chooseTarget:0<-yomi_ba_qianpai3:0<-trigger:0<-arrangeTrigger:0<-game:5
+-    · 心跳 30s 存活=6 auto=true over=false imchoosing=false 事件=judge:0<-phaseJudge:2<-phase:9<-phaseLoop:0<-game:7
+-第 13/20 局：✅ over 用时 39s 新增报错行 0 存活 5 武将：优香 / 标甘夫人 / 诸葛亮 / 孙尚香 / 日奈（礼服）
+-  [下一局] 开局 mode=identity hero=优香（体操） 武将库=25
+-  [批次] total=20 done=13 本页 2026-10-08T13:50:58.370Z
+-  [进局] 存活=8 auto=true 事件=gain:4<-draw:0<-wuzhong:0<-useCard:12<-chooseToUse:4
+-    · 心跳 30s 存活=5 auto=true over=false imchoosing=false 事件=useCard:8<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
+-第 14/20 局：✅ over 用时 36s 新增报错行 0 存活 3 武将：孙权 / 优香 / 星野（临战）攻击
+-  [下一局] 开局 mode=identity hero=优香（睡衣） 武将库=25
+-  [批次] total=20 done=14 本页 2026-10-08T13:51:37.740Z
+-  [进局] 存活=8 auto=true 事件=phase:9<-phaseLoop:0<-game:7<-?:?
+-第 15/20 局：✅ over 用时 6s 新增报错行 0 存活 7 武将：优香（睡衣） / 马超 / 标乐进 / 爱丽丝（女仆） / 诸葛亮 / 亚子（礼服） / 公孙瓒
+-  [下一局] 开局 mode=identity hero=星野（临战） 武将库=25
+-  [批次] total=20 done=15 本页 2026-10-08T13:51:46.984Z
+-  [进局] 存活=8 auto=true 事件=chooseControl:0<-yomi_ba_qiehuan:0<-trigger:0<-arrangeTrigger:0<-game:5
+-第 16/20 局：✅ over 用时 21s 新增报错行 0 存活 3 武将：星野（临战） / 司马懿 / 曹操
+-  [下一局] 开局 mode=identity hero=亚子 武将库=25
+-  [批次] total=20 done=16 本页 2026-10-08T13:52:13.586Z
+-  [进局] 存活=8 auto=true 事件=chooseBool:0<-trigger:0<-arrangeTrigger:0<-phase:7<-phaseLoop:0
+-    · 心跳 30s 存活=4 auto=true over=false imchoosing=false 事件=showCards:0<-yomi_ba_sushe:0<-trigger:0<-arrangeTrigger:0<-useCard:18
+-第 17/20 局：✅ over 用时 44s 新增报错行 0 存活 1 武将：星野（临战）
+-  [下一局] 开局 mode=identity hero=亚子（礼服） 武将库=25
+-  [批次] total=20 done=17 本页 2026-10-08T13:53:00.433Z
+-  [进局] 存活=8 auto=true 事件=phase:9<-phaseLoop:0<-game:7<-?:?
+-第 18/20 局：✅ over 用时 27s 新增报错行 0 存活 6 武将：亚子（礼服） / 赵云 / 公孙瓒 / 华雄 / 标甘夫人 / 吕布
+-  [下一局] 开局 mode=identity hero=花子 武将库=25
+-  [批次] total=20 done=18 本页 2026-10-08T13:53:30.741Z
+-  [进局] 存活=8 auto=true 事件=chooseBool:0<-trigger:0<-arrangeTrigger:0<-phase:7<-phaseLoop:0
+-第 19/20 局：✅ over 用时 27s 新增报错行 0 存活 3 武将：星野（临战）防御 / 公孙瓒 / 爱丽丝
+-  [下一局] 开局 mode=identity hero=花子（泳装） 武将库=25
+-  [批次] total=20 done=19 本页 2026-10-08T13:54:01.098Z
+-  [进局] 存活=8 auto=true 事件=chooseBool:0<-trigger:0<-arrangeTrigger:0<-phase:7<-phaseLoop:0
+-第 20/20 局：✅ over 用时 11s 新增报错行 0 存活 5 武将：花子（泳装） / 袁术 / 标乐进 / 甄宓 / 夏侯惇
+-===== AUTO MATCH FINISHED 2026-10-08T13:54:14.726Z done 20/20 =====
+diff --git a/apps/core/_yomi_devtools.js b/apps/core/_yomi_devtools.js
+index 807dbdd..c3285c3 100644
+--- a/apps/core/_yomi_devtools.js
++++ b/apps/core/_yomi_devtools.js
+@@ -29,6 +29,35 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ (function () {
+ 	if (!/^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname)) return;
+ 
++	/* ---------- ① 接管 alert：原生 alert 会冻结全部 JS（报错弹窗后 harness 停摆 ✗） ---------- */
++	let alertBox = null;
++	function showAlertBox(msg) {
++		try {
++			if (!alertBox) {
++				alertBox = document.createElement("div");
++				alertBox.style.cssText =
++					"position:fixed;left:8px;bottom:8px;max-width:46vw;max-height:34vh;overflow:auto;z-index:99999;" +
++					"background:rgba(20,20,20,.92);color:#ffd479;font:12px/1.5 monospace;padding:8px 10px;" +
++					"border:1px solid #a86;border-radius:6px;white-space:pre-wrap";
++				document.body.appendChild(alertBox);
++			}
++			alertBox.textContent = String(msg).slice(0, 2000);
++			alertBox.style.display = "block";
++			clearTimeout(alertBox._t);
++			alertBox._t = setTimeout(() => {
++				if (alertBox) alertBox.style.display = "none";
++			}, 8000);
++		} catch (e) {}
++	}
++	if (typeof window.alert === "function" && !window.__yomiAlertPatched) {
++		window.__yomiAlertPatched = true;
++		window.alert = function (msg) {
++			showAlertBox(msg);
++			appendText(REPORT, "  【页面 alert（已改为非阻塞）】" + String(msg).split("\n").slice(0, 6).join(" | ") + "\n");
++			console.error("[yomi] (alert) " + msg);
++		};
++	}
++
+ 	const REPORT = "_yomi_auto_report.txt";
+ 	const ERRLOG = "_yomi_errors.log";
+ 	const KEY = "_yomi_auto_batch";
+@@ -253,9 +282,12 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 
+ 	/* ---------- 阶段 B：开局（轮换武将 + continue_name + directstart） ---------- */
+ 	async function ensureIngame(st, label) {
++		// 报错后要强制重开（st.forceRestart）→ 跳过「已在局内」的短路
++		const forced = !!st.forceRestart;
++		if (forced) delete st.forceRestart;
+ 		// ⚠️ 必须排除「本局已结束」：结束后 game.me/game.players 依然存在，
+ 		//    否则会误判成「还在对局中」→ 直接 return → 停在「战斗失败/重新开始」界面不动 ✗
+-		if (ingame() && aliveCount() > 1 && !gameOver()) return true;
++		if (!forced && ingame() && aliveCount() > 1 && !gameOver()) return true;
+ 		st.reloads = (st.reloads || 0) + 1;
+ 		if (st.reloads > 5) {
+ 			await appendText(REPORT, "  ❌ " + label + " 连续 " + (st.reloads - 1) + " 次未进对局，放弃。\n" + window.__yomiSnapshot() + "\n");
+@@ -289,8 +321,15 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 		let why = "timeout";
+ 		let lastBeat = 0;
+ 		const perMatchMax = 9 * 60 * 1000;
++		let errCount = st.errBase;
++		let lastErrCheck = 0;
+ 		while (Date.now() - mt < perMatchMax) {
+ 			enableAuto();
++			const nowSec = Math.round((Date.now() - mt) / 1000);
++			if (nowSec - lastErrCheck >= 3) {
++				lastErrCheck = nowSec;
++				errCount = await errLines();
++			}
+ 			if (ui && ui.continue_game) {
+ 				why = "ended";
+ 				break;
+@@ -308,6 +347,13 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 				lastBeat = el;
+ 				await appendText(REPORT, "    · 心跳 " + el + "s 存活=" + aliveCount() + " auto=" + (_status ? _status.auto : "?") + " over=" + !!(_status && _status.over) + " imchoosing=" + !!(_status && _status.imchoosing) + " 事件=" + evtChain() + "\n");
+ 			}
++			// ③ 本局出现报错 → 跳过本局、强制重开（用户要求：出错也继续测其他问题 ✓）
++			//    原生 alert 已被接管为非阻塞，所以这里能继续跑 ✓
++			if (errCount > st.errBase + 1) {
++				await appendText(REPORT, "    ⚠️ 本局出现报错（错误日志增长），跳过本局并重开新局 ✓\n");
++				why = "error-skip";
++				break;
++			}
+ 			if (!ingame()) {
+ 				const hit = driveStartMenu(st.hero);
+ 				if (hit) {
+@@ -407,6 +453,8 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 			console.log("[自动对局] 全部完成");
+ 			return;
+ 		}
++		// 本局是「报错跳过」→ 下一局强制重开（不沿用当前对局状态）
++		if (why === "error-skip" || why === "timeout") st.forceRestart = true;
+ 		// ⚠️ 不用 game.reloadCurrent()：它会把 continue_name 覆盖成「本局武将」，轮换就失效了
+ 		await ensureIngame(st, "下一局");
+ 		running = false;
+diff --git a/apps/core/_yomi_errors.log b/apps/core/_yomi_errors.log
+index 5412b6d..657c9db 100644
+--- a/apps/core/_yomi_errors.log
++++ b/apps/core/_yomi_errors.log
+@@ -1,14 +1,31 @@
++
+ 
+-===== 2026-10-08T13:48:57.679Z =====
+-【console.error】ReferenceError: Cannot find lidian when parsing die audio.
+-    at useDefaultInfo (http://127.0.0.1:8081/noname/get/audio.ts:373:25)
+-    at new DieAudio (http://127.0.0.1:8081/noname/get/audio.ts:380:9)
+-    at DieAudio.getReferenceAudio (http://127.0.0.1:8081/noname/get/audio.ts:408:12)
+-    at Audio.getReferenceAudio (http://127.0.0.1:8081/noname/get/audio.ts:114:31)
+-    at Audio.parseAudio (http://127.0.0.1:8081/noname/get/audio.ts:192:19)
+-    at http://127.0.0.1:8081/noname/get/audio.ts:143:14
+-    at Array.forEach (<anonymous>)
+-    at Audio.parseAudio (http://127.0.0.1:8081/noname/get/audio.ts:142:17)
+-    at Audio.initAudioList (http://127.0.0.1:8081/noname/get/audio.ts:102:28)
+-    at get audioList (http://127.0.0.1:8081/noname/get/audio.ts:80:10)
++===== 2026-10-08T14:02:13.232Z =====
++【unhandledrejection】evt.getParent is not a function
++ 栈: TypeError: evt.getParent is not a function
++    at nearestTargetsEvent (http://127.0.0.1:8081/character/yomi_char_ba/skill.js?t=1791457122236:1625:13)
++    at Object.filter (http://127.0.0.1:8081/character/yomi_char_ba/skill.js?t=1791457122236:1671:17)
++    at Object.filterTrigger (http://127.0.0.1:8081/noname/library/index.js:11101:29)
++    at http://127.0.0.1:8081/noname/library/element/content.ts:3498:79
++    at Array.filter (<anonymous>)
++    at GameEvent.arrangeTrigger (http://127.0.0.1:8081/noname/library/element/content.ts:3498:51)
++    at GameEvent.content (http://127.0.0.1:8081/noname/library/element/GameEvent/compilers/ArrayCompiler.ts:26:34)
++    at GameEvent.loop (http://127.0.0.1:8081/noname/library/element/gameEvent.ts:228:27)
++    at async http://127.0.0.1:8081/noname/library/element/gameEvent.ts:202:7
++    at async http://127.0.0.1:8081/noname/library/element/gameEvent.ts:287:9
++当时事件链: (无 _status.event)
++
++===== 2026-10-08T14:02:13.644Z =====
++【unhandledrejection】evt.getParent is not a function
++ 栈: TypeError: evt.getParent is not a function
++    at nearestTargetsEvent (http://127.0.0.1:8081/character/yomi_char_ba/skill.js?t=1791457122236:1625:13)
++    at Object.filter (http://127.0.0.1:8081/character/yomi_char_ba/skill.js?t=1791457122236:1671:17)
++    at Object.filterTrigger (http://127.0.0.1:8081/noname/library/index.js:11101:29)
++    at http://127.0.0.1:8081/noname/library/element/content.ts:3498:79
++    at Array.filter (<anonymous>)
++    at GameEvent.arrangeTrigger (http://127.0.0.1:8081/noname/library/element/content.ts:3498:51)
++    at GameEvent.content (http://127.0.0.1:8081/noname/library/element/GameEvent/compilers/ArrayCompiler.ts:26:34)
++    at GameEvent.loop (http://127.0.0.1:8081/noname/library/element/gameEvent.ts:228:27)
++    at async http://127.0.0.1:8081/noname/library/element/gameEvent.ts:202:7
++    at async http://127.0.0.1:8081/noname/library/element/gameEvent.ts:287:9
+ 当时事件链: (无 _status.event)
+diff --git a/apps/core/character/yomi_char_ba/skill.js b/apps/core/character/yomi_char_ba/skill.js
+index d47d0c0..2c8fb89 100644
+--- a/apps/core/character/yomi_char_ba/skill.js
++++ b/apps/core/character/yomi_char_ba/skill.js
+@@ -1599,6 +1599,9 @@ function isDamageCard(card) {
+ 
+ /** 伤害事件对应的 useCard 事件（没有则 null） */
+ function parentUseCard(event) {
++	// ⚠️ 入口防御：实机报过 `evt.getParent is not a function`（yomi_char_ba/skill.js:1625 ，
++	//    事件链 arrangeTrigger ← damage）—— 入参不一定是事件对象，直接调会抛 TypeError ✗
++	if (!event || typeof event.getParent !== "function") return null;
+ 	return event.getParent("useCard") || null;
+ }
+ 
+@@ -1619,9 +1622,12 @@ function isChainedDamage(event) {
+ 
+ /** 向上找最近一个带 targets 的祖先事件（用于判断「多目标效果」） */
+ function nearestTargetsEvent(event) {
++	// ⚠️ 入口防御（2026-10-08 实机 bug：evt.getParent is not a function）
++	if (!event || typeof event.getParent !== "function") return null;
+ 	let evt = event.getParent();
+ 	for (let i = 0; i < 6 && evt; i++) {
+ 		if (evt.targets) return evt;
++		if (typeof evt.getParent !== "function") break;
+ 		evt = evt.getParent();
+ 	}
+ 	return null;

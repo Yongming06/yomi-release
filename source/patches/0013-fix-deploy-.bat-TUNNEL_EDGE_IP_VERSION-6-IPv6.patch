@@ -1,0 +1,37 @@
+From ba97350244624e0e3216b04ddf314959ad69b0c6 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Wed, 7 Oct 2026 22:02:50 +0800
+Subject: [PATCH 13/37] =?UTF-8?q?fix(deploy):=20=E5=9B=9E=E6=BB=9A=20.bat?=
+ =?UTF-8?q?=20=E7=9A=84=20TUNNEL=5FEDGE=5FIP=5FVERSION=3D6=EF=BC=88?=
+ =?UTF-8?q?=E6=9C=AC=E6=9C=BA=E6=97=A0=E5=85=A8=E5=B1=80=20IPv6=EF=BC=8C?=
+ =?UTF-8?q?=E9=9A=A7=E9=81=93=E8=B5=B7=E4=B8=8D=E6=9D=A5=EF=BC=89=EF=BC=8C?=
+ =?UTF-8?q?=E4=BF=9D=E7=95=99=E8=AF=B4=E6=98=8E=E6=B3=A8=E9=87=8A?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ deploy/cloudflared-http2.bat | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/deploy/cloudflared-http2.bat b/deploy/cloudflared-http2.bat
+index 9135d2c..3cdf0f2 100644
+--- a/deploy/cloudflared-http2.bat
++++ b/deploy/cloudflared-http2.bat
+@@ -20,10 +20,12 @@ rem ============================================================================
+ chcp 65001 >nul
+ setlocal
+ set "EXE=C:\Program Files (x86)\cloudflared\cloudflared.exe"
+-rem Force IPv6 to the Cloudflare tunnel edge: measured 2026-10-07, IPv4 lands on
+-rem Los Angeles (285-342 ms RTT, ~1-2 KB/s) while IPv6 reaches a nearby edge (30 ms).
+-rem This overrides the machine-level TUNNEL_EDGE_IP_VERSION for this process only.
+-set "TUNNEL_EDGE_IP_VERSION=6"
++rem NOTE (2026-10-07): forcing TUNNEL_EDGE_IP_VERSION=6 was TRIED AND FAILED here -
++rem this machine has no global IPv6 address, so cloudflared exits with
++rem "there are no free edge addresses left to resolve to".
++rem IPv4 lands on Los Angeles (~300 ms RTT, only 1-2 KB/s) and cannot be improved by config.
++rem => For real gameplay use ZeroTier instead (see the ZeroTier friend guide);
++rem    keep this tunnel only as a slow remote fallback.
+ set "LOG=%~dp0..\..\_worklog\cloudflared-http2.log"
+ set "TOKEN=%CLOUDFLARED_TUNNEL_TOKEN%"
+ if not defined TOKEN if exist "%~dp0..\..\.cloudflare-tunnel-token" set /p TOKEN=<"%~dp0..\..\.cloudflare-tunnel-token"

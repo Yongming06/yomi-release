@@ -1,0 +1,385 @@
+From ed6c401ec469dbd56df7bfb26501d06787be9885 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 20:57:44 +0800
+Subject: [PATCH 28/37] =?UTF-8?q?fix(dev):=20=E8=87=AA=E5=8A=A8=E5=AF=B9?=
+ =?UTF-8?q?=E5=B1=80=20v2=20=E6=94=B9=E7=94=A8=E5=BC=95=E6=93=8E=20API=20?=
+ =?UTF-8?q?=E5=BC=80=E5=B1=80=EF=BC=88directstart+reload=20/=20reloadCurre?=
+ =?UTF-8?q?nt=EF=BC=89=EF=BC=8C=E4=B8=8D=E5=86=8D=E7=82=B9=E8=8F=9C?=
+ =?UTF-8?q?=E5=8D=95=EF=BC=9B=E5=A4=B1=E8=B4=A5=E6=97=B6=E5=86=99=E9=A1=B5?=
+ =?UTF-8?q?=E9=9D=A2=E7=8A=B6=E6=80=81=E5=BF=AB=E7=85=A7?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/_yomi_auto_report.txt |   4 +
+ apps/core/_yomi_devtools.js     | 276 ++++++++++++++++++--------------
+ 2 files changed, 156 insertions(+), 124 deletions(-)
+ create mode 100644 apps/core/_yomi_auto_report.txt
+
+diff --git a/apps/core/_yomi_auto_report.txt b/apps/core/_yomi_auto_report.txt
+new file mode 100644
+index 0000000..3672a51
+--- /dev/null
++++ b/apps/core/_yomi_auto_report.txt
+@@ -0,0 +1,4 @@
++
++===== AUTO MATCH START 2026-10-08T12:09:19.089Z target 20 matches =====
++
++===== AUTO MATCH START 2026-10-08T12:12:08.091Z target 20 matches =====
+diff --git a/apps/core/_yomi_devtools.js b/apps/core/_yomi_devtools.js
+index f67402f..1df7d4a 100644
+--- a/apps/core/_yomi_devtools.js
++++ b/apps/core/_yomi_devtools.js
+@@ -1,19 +1,20 @@
+ /* ============================================================================
+- * 【仅本地开发】自动对局回归测试（无名杀 · 自制内容项目）
++ * 【仅本地开发】自动对局回归测试 v2（无名杀 · 自制内容项目）
+  *
+- * 为什么放在游戏里而不是外面：无名杀是浏览器游戏，本机的内置浏览器不可用（无 Electron），
+- * 所以由**页面自己**点击菜单跑对局最稳；配合 index.html 里那段「报错自动落盘」钩子，
+- * 每局的报错都会写进 _yomi_errors.log，由开发者（或 AI）事后统一读取分析。
++ * v1 的问题：靠「文本点击菜单」开局 —— 而 dev 版主菜单是 Vue 实现，点不中 ✗
++ * v2 改为**引擎 API**（已读源码确认）：
++ *   · 开局：localStorage.setItem(prefix+"directstart", true) + game.reload()
++ *           依据：init/index.ts:335 启动时读 directstart → 直接进对局
++ *                 （ui/create/menu/pages/startMenu.js:110-113 同款写法）
++ *   · 重开：game.reloadCurrent()（引擎「再战」按钮调用的就是它，game/index.js:7221）
++ *   · 托管：_status.auto = true / ui.click.auto()
++ *   · 选将/身份/座位界面：出现就点「确定」类按钮；再不行就把**页面状态快照**写进报告
+  *
+- * 用法（任选其一）：
+- *   ① 打开带参数的网址：  http://127.0.0.1:8081/?yomiAuto=20
+- *   ② 游戏里按 F12，在 Console 执行：  __yomiAutoMatch(20)
+- *   ③ 带自定义：  __yomiAutoMatch(20, { maxMinutes: 60, verbose: true })
+- *
+- * 每局结束会往 _yomi_auto_report.txt 追加一行摘要（局号 / 武将 / 时长 / 本局报错数），
+- * 全部结束后写一行「结束」。读取方式（宿主命令行）：
+- *   python tools/_read_game_errors.py            # 报错明细
+- *   type noname\apps\core\_yomi_auto_report.txt  # 对局摘要
++ * 用法：
++ *   ① http://127.0.0.1:8081/?yomiAuto=20   （推荐：配合项目根目录 auto_match.cmd 双击）
++ *   ② 控制台： __yomiAutoMatch(20)
++ *   ③ 诊断：   __yomiSnapshot()             （卡住时用，把当前页面状态写进报告）
++ * 输出：_yomi_auto_report.txt（每局摘要 + 失败诊断）、_yomi_errors.log（报错 + 事件链）
+  * ==========================================================================*/
+ (function () {
+ 	if (!/^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname)) return;
+@@ -21,12 +22,12 @@
+ 	const REPORT = "_yomi_auto_report.txt";
+ 	const ERRLOG = "_yomi_errors.log";
+ 	const sleep = ms => new Promise(r => setTimeout(r, ms));
++	const now = () => new Date().toISOString();
+ 
+-	/* ---------- 文件读写（走游戏自己的文件后端） ---------- */
++	/* ---------- 文件 ---------- */
+ 	async function readText(name) {
+ 		try {
+-			const r = await fetch("/readFileAsText?fileName=" + name);
+-			const j = await r.json();
++			const j = await (await fetch("/readFileAsText?fileName=" + name)).json();
+ 			return j && j.success && typeof j.data === "string" ? j.data : "";
+ 		} catch (e) {
+ 			return "";
+@@ -34,98 +35,133 @@
+ 	}
+ 	async function appendText(name, text) {
+ 		const old = await readText(name);
+-		const data = Array.from(new TextEncoder().encode(old + text));
+ 		try {
+ 			await fetch("/writeFile", {
+ 				method: "POST",
+ 				headers: { "Content-Type": "application/json" },
+-				body: JSON.stringify({ path: name, data }),
++				body: JSON.stringify({ path: name, data: Array.from(new TextEncoder().encode(old + text)) }),
+ 			});
+ 		} catch (e) {}
+ 	}
+-	const errLineCount = async () => (await readText(ERRLOG)).split("\n").length;
++	const errLines = async () => (await readText(ERRLOG)).split("\n").length;
+ 
+-	/* ---------- DOM 工具 ---------- */
+-	function visible(node) {
+-		if (!node || !node.isConnected) return false;
+-		const r = node.getBoundingClientRect();
+-		return r.width > 0 && r.height > 0;
++	/* ---------- 状态快照（失败时写进报告，便于远程定位） ---------- */
++	window.__yomiSnapshot = function () {
++		const vis = [];
++		for (const n of document.querySelectorAll("div,span,button")) {
++			if (!n.isConnected) continue;
++			const r = n.getBoundingClientRect();
++			if (r.width <= 0 || r.height <= 0) continue;
++			const t = (n.textContent || "").trim();
++			if (t && t.length <= 12 && n.children.length === 0 && !vis.includes(t)) vis.push(t);
++			if (vis.length > 60) break;
++		}
++		let evt = "(无)";
++		try {
++			const names = [];
++			let cur = window._status && _status.event;
++			for (let i = 0; i < 5 && cur; i++) {
++				names.push((cur.name || "?") + ":" + (cur.step ?? "?"));
++				cur = cur.getParent ? cur.getParent() : null;
++			}
++			evt = names.join(" <- ");
++		} catch (e) {}
++		return [
++			"  [快照] url=" + location.href,
++			"  [快照] game.me=" + (window.game && game.me ? get.translation(game.me.name) : "null"),
++			"  [快照] 存活人数=" + (window.game && game.players ? game.players.filter(p => p.isAlive && p.isAlive()).length : "?"),
++			"  [快照] mode=" + (window.lib && lib.config ? lib.config.mode : "?"),
++			"  [快照] directstart=" + localStorage.getItem((window.lib ? lib.configprefix : "") + "directstart"),
++			"  [快照] _status.auto=" + (window._status ? _status.auto : "?"),
++			"  [快照] 事件链=" + evt,
++			"  [快照] 可见按钮文本=" + vis.join(" | "),
++		].join("\n");
++	};
++
++	/* ---------- 状态判断 ---------- */
++	function ingame() {
++		try {
++			return !!(window.game && game.me && game.players && game.players.length);
++		} catch (e) {
++			return false;
++		}
+ 	}
+-	/** 按可见文本找元素并点击（先精确、再包含） */
+-	function clickByText(text, tag) {
+-		const all = [...document.querySelectorAll(tag || "*")];
+-		const hit =
+-			all.find(n => visible(n) && n.textContent.trim() === text && n.children.length === 0) ||
+-			all.find(n => visible(n) && n.textContent.trim() === text) ||
+-			all.find(n => visible(n) && n.textContent.includes(text) && n.className.includes("button")) ||
+-			all.find(n => visible(n) && n.textContent.includes(text));
+-		if (!hit) return false;
+-		hit.click();
+-		return true;
++	function aliveCount() {
++		try {
++			return game.players.filter(p => p.isAlive()).length;
++		} catch (e) {
++			return -1;
++		}
+ 	}
+-	async function waitFor(fn, timeout, step) {
+-		const t0 = Date.now();
+-		while (Date.now() - t0 < (timeout || 30000)) {
+-			try {
+-				const v = fn();
+-				if (v) return v;
+-			} catch (e) {}
+-			await sleep(step || 400);
++	function gameOver() {
++		try {
++			if (window.ui && ui.continue_game) return true;
++			if (window._status && _status.over) return true;
++			return false;
++		} catch (e) {
++			return false;
+ 		}
+-		return null;
+ 	}
+-	const inGame = () => window.game && game.me && window.ui && ui.arena && ui.arena.classList.contains("paused") === false;
+ 
+-	/* ---------- 一局：从「主菜单/对局结束」走到开局 ---------- */
+-	async function startOneMatch(verbose) {
+-		// 1) 目标：进入身份模式对局。菜单文案：开始 → （模式页可能直接开始）→ 开始游戏
+-		for (let i = 0; i < 30; i++) {
+-			if (window.game && game.me) return true; // 已经在大厅/对局里
+-			if (clickByText("开始", "div")) {
+-				await sleep(600);
+-			}
+-			if (clickByText("身份", "div")) {
+-				await sleep(400);
+-			}
+-			if (clickByText("开始游戏", "div") || clickByText("确定", "div")) {
+-				await sleep(1500);
++	/** 在可见元素里找按钮点击（精确 → 前缀包含，不点排除项） */
++	function clickAny(texts, exclude) {
++		for (const text of texts) {
++			for (const n of document.querySelectorAll("div,span,button,a")) {
++				if (!n.isConnected) continue;
++				const r = n.getBoundingClientRect();
++				if (r.width <= 0 || r.height <= 0) continue;
++				const t = (n.textContent || "").trim();
++				if (t !== text && !(t.includes(text) && t.length <= text.length + 6)) continue;
++				if (exclude && exclude.some(x => t.includes(x))) continue;
++				try {
++					n.click();
++					return t;
++				} catch (e) {}
+ 			}
+-			// 选将阶段：点「确定」/「自由选将」都不用管，托管后引擎会自己选
+-			if (await waitFor(() => (window.game && game.me ? true : null), 3000, 300)) return true;
+-			if (verbose) console.log("[自动对局] 等待开局…", i);
+-			await sleep(800);
+ 		}
+-		return false;
++		return null;
+ 	}
+ 
+-	/** 打开托管（AI 接管我方操作） */
++	/** 托管：让 AI 接管我方（含选将、出牌、响应） */
+ 	function enableAuto() {
+ 		try {
+-			if (window.ui && ui.click && typeof ui.click.auto === "function" && !window._status?.auto) {
+-				ui.click.auto();
+-			}
+ 			if (window._status) _status.auto = true;
++			if (window.ui && ui.click && typeof ui.click.auto === "function" && !_status.auto) ui.click.auto();
+ 		} catch (e) {}
+ 	}
+ 
+-	/** 等本局结束（对局结束后引擎会给出「再战 / 重开」等控制按钮） */
+-	async function waitMatchEnd(maxMs, verbose) {
+-		const t0 = Date.now();
+-		while (Date.now() - t0 < maxMs) {
+-			if (window.ui && ui.arena && ui.arena.classList.contains("paused")) {
+-				return "paused";
++	/** 推进「选将/身份/座位」这类等待界面 */
++	function tryAdvanceLobby() {
++		return clickAny(["确定", "出战", "确认", "开始游戏", "开始"], ["自由选将", "更换", "返回"]);
++	}
++
++	/** 开始（或重开）一局，返回是否成功进入对局 */
++	async function startMatch(verbose, firstTime) {
++		if (ingame() && aliveCount() > 1) return true; // 已经在对局里（用户手动开好也走这条）
++		for (let round = 0; round < 4; round++) {
++			try {
++				if (window.lib && lib.config && !lib.config.all.mode.includes(lib.config.mode)) {
++					game.saveConfig("mode", "identity");
++				}
++				localStorage.setItem(lib.configprefix + "directstart", "true");
++				if (!firstTime && round === 0 && typeof game.reloadCurrent === "function") {
++					game.reloadCurrent(); // 引擎现成的「再来一局」
++				} else {
++					game.reload();
++				}
++			} catch (e) {
++				if (verbose) console.log("[自动对局] 开局调用失败：" + e);
+ 			}
+-			// 结束后出现「再战」或「重开」
+-			const endBtn = [...document.querySelectorAll("div")].some(
+-				n => visible(n) && (n.textContent.trim() === "再战" || n.textContent.trim() === "重开"),
+-			);
+-			if (endBtn) return "ended";
+-			await sleep(1500);
+-			if (verbose && Math.round((Date.now() - t0) / 1000) % 30 === 0) {
+-				console.log("[自动对局] 进行中…", Math.round((Date.now() - t0) / 1000) + "s");
++			for (let i = 0; i < 90; i++) {
++				await sleep(1000);
++				if (ingame() && aliveCount() > 1) return true;
++				tryAdvanceLobby();
++				enableAuto();
++				if (verbose && i % 15 === 14) console.log("[自动对局] 等待开局… " + (i + 1) + "s");
+ 			}
++			if (verbose) console.log("[自动对局] 第 " + (round + 1) + " 次尝试没进对局，重试");
+ 		}
+-		return "timeout";
++		return false;
+ 	}
+ 
+ 	/* ---------- 主流程 ---------- */
+@@ -135,67 +171,59 @@
+ 		const perMatchMax = opts.perMatchMaxMs || 8 * 60 * 1000;
+ 		const verbose = opts.verbose !== false;
+ 		const t0 = Date.now();
+-		await appendText(REPORT, "\n===== AUTO MATCH START " + new Date().toISOString() + " target " + count + " matches =====\n");
++		await appendText(REPORT, "\n===== AUTO MATCH START " + now() + " target " + count + " matches =====\n");
++		await appendText(REPORT, "  [环境] mode=" + (window.lib && lib.config ? lib.config.mode : "?") + " ingame=" + ingame() + " alive=" + aliveCount() + "\n");
++
+ 		let ok = 0;
+ 		for (let i = 1; i <= count; i++) {
+-			const before = await errLineCount();
++			const before = await errLines();
+ 			const mt = Date.now();
+-			const started = await startOneMatch(verbose);
++			const started = await startMatch(verbose, i === 1);
+ 			if (!started) {
+-				await appendText(REPORT, "第 " + i + " 局：❌ 开局失败（菜单没点进去）\n");
++				await appendText(REPORT, "第 " + i + " 局：❌ 开局失败（引擎 API 也没进去）\n" + window.__yomiSnapshot() + "\n");
+ 				break;
+ 			}
+ 			enableAuto();
+-			const why = await waitMatchEnd(perMatchMax, verbose);
+-			const after = await errLineCount();
+-			const heroes = (() => {
+-				try {
+-					return game.players
+-						.filter(p => p.name && !String(p.name).startsWith("unknown"))
+-						.map(p => get.translation(p.name))
+-						.join(" / ");
+-				} catch (e) {
+-					return "?";
++			let why = "timeout";
++			while (Date.now() - mt < perMatchMax) {
++				enableAuto();
++				if (gameOver()) {
++					why = "ended";
++					break;
+ 				}
+-			})();
++				if (ingame() && aliveCount() <= 1) {
++					why = "1-alive";
++					break;
++				}
++				await sleep(1500);
++			}
++			const after = await errLines();
++			let heroes = "?";
++			try {
++				heroes = game.players
++					.filter(p => p.name && !String(p.name).startsWith("unknown"))
++					.map(p => get.translation(p.name))
++					.join(" / ");
++			} catch (e) {}
+ 			const line =
+-				"第 " +
+-				i +
+-				" 局：" +
+-				(why === "timeout" ? "⏱ 超时中止" : "✅ " + why) +
+-				" 用时 " +
+-				Math.round((Date.now() - mt) / 1000) +
+-				"s 本局新增报错行 " +
+-				Math.max(0, after - before) +
+-				" 武将：" +
+-				heroes +
+-				"\n";
++				"第 " + i + " 局：" + (why === "timeout" ? "⏱ 超时中止" : "✅ " + why) +
++				" 用时 " + Math.round((Date.now() - mt) / 1000) + "s 新增报错行 " + Math.max(0, after - before) +
++				" 存活 " + aliveCount() + " 武将：" + heroes + "\n";
+ 			await appendText(REPORT, line);
+ 			if (verbose) console.log("[自动对局] " + line.trim());
+ 			ok++;
+-			// 结束 → 点「再战」或重开，进入下一局
+-			if (why === "ended") {
+-				if (!clickByText("再战", "div")) clickByText("重开", "div");
+-			}
+-			await sleep(2500);
+-			enableAuto();
++			await sleep(2000);
+ 		}
+-		await appendText(
+-			REPORT,
+-			"===== AUTO MATCH FINISHED " + new Date().toISOString() + " done " + ok + "/" + count + " elapsed " + Math.round((Date.now() - t0) / 1000) + "s =====\n",
+-		);
++		await appendText(REPORT, "===== AUTO MATCH FINISHED " + now() + " done " + ok + "/" + count + " elapsed " + Math.round((Date.now() - t0) / 1000) + "s =====\n");
+ 		if (verbose) console.log("[自动对局] 全部结束");
+ 		return ok;
+ 	};
+ 
+-	// 支持 ?yomiAuto=20 直接开跑（延迟 8 秒等游戏加载完）
+ 	const m = /[?&]yomiAuto=(\d+)/.exec(location.search);
+ 	if (m) {
+-		console.log("[自动对局] 检测到 yomiAuto 参数，8 秒后开始 " + m[1] + " 局");
+-		setTimeout(() => {
+-			window.__yomiAutoMatch(m[1]);
+-		}, 8000);
++		console.log("[自动对局 v2] 检测到 yomiAuto=" + m[1] + "，10 秒后开始");
++		setTimeout(() => window.__yomiAutoMatch(m[1]), 10000);
+ 	} else {
+-		console.log("[自动对局] 已就绪：控制台执行 __yomiAutoMatch(20) 或访问 ?yomiAuto=20");
++		console.log("[自动对局 v2] 就绪：控制台执行 __yomiAutoMatch(20)；卡住时用 __yomiSnapshot() 查看状态");
+ 	}
+ })();

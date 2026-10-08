@@ -1,0 +1,5878 @@
+From 67d52cc4158f8aee163dc7121256f704a9c15a78 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Tue, 6 Oct 2026 21:06:06 +0800
+Subject: [PATCH 05/37] =?UTF-8?q?refactor(character):=20BA=20=E6=89=B9?=
+ =?UTF-8?q?=E6=AC=A1=2002=20=E6=8C=89=E6=9C=AC=E4=BD=93=E7=A8=B3=E5=AE=9A?=
+ =?UTF-8?q?=E6=96=B9=E6=A1=88=E5=AF=B9=E9=BD=90=EF=BC=88=E5=88=87=E6=8D=A2?=
+ =?UTF-8?q?=E4=BD=93=E5=8A=9B=E8=B5=B0=E4=B8=8A=E9=99=90=20API=E3=80=81?=
+ =?UTF-8?q?=E4=B8=87=E7=AE=AD=E8=B5=B0=20chooseUseTarget=E3=80=81=E5=85=B6?=
+ =?UTF-8?q?=E4=BD=99=E8=A1=A5=E6=9C=AC=E4=BD=93=E5=90=8C=E6=AC=BE=E6=B3=A8?=
+ =?UTF-8?q?=E9=87=8A=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/character/yomi_char_ba/skill.js | 5842 +++++++++++----------
+ 1 file changed, 2925 insertions(+), 2917 deletions(-)
+
+diff --git a/apps/core/character/yomi_char_ba/skill.js b/apps/core/character/yomi_char_ba/skill.js
+index 71ae5c6..4900ec3 100644
+--- a/apps/core/character/yomi_char_ba/skill.js
++++ b/apps/core/character/yomi_char_ba/skill.js
+@@ -1,1611 +1,1611 @@
+-import { lib, game, ui, get, ai, _status } from "noname";
+-
+-/**
+- * 自制武将包「BA」（包名 yomi_char_ba）—— 技能实现
+- *
+- * ============================================================
+- * 【本包最大特点：同一技能名会在很多武将身上重复出现】
+- * ============================================================
+- * 用户要求（2026-10-05）：
+- *   1. 同名 + 同效果 的技能，**游戏内显示（技能名 / 描述）与效果处理完全一致**；
+- *   2. 但代码层面必须**逐武将区分**：首次出现用 `yomi_ba_xxx`，第二个武将开始
+- *      依次加后缀 `2`、`3`、`4`……（如 `yomi_ba_qianpai` / `yomi_ba_qianpai2` / …），
+- *      这样日后想单独调整某个武将不会牵连其他武将；
+- *   3. 同名但**不同效果**的技能，同样用独立 id 区分，并在 `名称登记表.md` 里注明差异。
+- *
+- * 实现方式（重要）：同名技能一律走**工厂函数**，例如 `makeQianpai("yomi_ba_qianpai2")`。
+- *   工厂每次都返回**全新对象**（引擎载入技能时会往 info 上写 `_priority` 等字段，
+- *   共用同一个对象会互相污染），因此「显示一致、实现独立」两不误。
+- *   子技能 id 由主 id 派生（`<主id>_force` / `<主id>_ban` / `<主id>_heal`），天然跟着后缀走。
+- *
+- * ============================================================
+- * 通用约定（与其它自制包一致）
+- * ============================================================
+- * 1. 一切自定义命名实体加 `yomi_` 前缀（技能 id / 子技能 id / 标记名 / storage 键）。
+- * 2. 每个技能（含 sub 子技能）都要在 translate.js 里给中文名，否则弹窗显示英文 id。
+- * 3. 必发 / 锁定 / 载体技能一律 `forced: true` + `silent: true`（引擎对 yomi_ 前缀 + trigger + forced
+- *    的技能会自动补 silent，显式写是双保险）；「可以选择」的技能**绝不能**写 silent。
+- * 4. 判断 useCard 的牌不要用 `get.itemtype(card) === "card"`，直接用 `get.name/get.tag/get.nature`。
+- * 5. 跨回合窗口用 `player.storage.X = player.phaseNumber`，filter 里判 `===`。
+- */
+-
+-/** @type { importCharacterConfig["skill"] } */
+-const skills = {
+-	// ================================================================
+-	// 技能工厂们（同名技能重复出现时调用，返回「全新」的技能表片段）
+-	// ================================================================
+-
+-	...makeQianpai("yomi_ba_qianpai"),
+-	...makeTuijin("yomi_ba_tuijin"),
+-	...makeHuanjiu("yomi_ba_huanjiu"),
+-
+-	// ================================================================
+-	// 批次 01（2026-10-05）—— 8 个新武将
+-	//   同名技能：前排/后排走工厂加后缀；破甲/钻弹/终幕同名不同效果各写一份
+-	// ================================================================
+-	...makeQianpai("yomi_ba_qianpai2"), // 星野（临战）防御
+-	...makeHoupai("yomi_ba_houpai"), // 日奈（礼服）
+-	...makeHoupai("yomi_ba_houpai2"), // 日奈（泳装）
+-	...makeHoupai("yomi_ba_houpai3"), // 日奈
+-	...makeChonglang("yomi_ba_chonglang"), // 星野（泳装）
+-	...makeYanti("yomi_ba_yanti"), // 星野（防御）掩体
+-	...makeYashe("yomi_ba_yashe"), // 星野（攻击）压射
+-
+-	// —— 临时护甲（「临」标记）系统载体：用户 2026-10-05 设计 ——
+-	yomi_ba_temp_hujia: {
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		marktext: "临",
+-		intro: {
+-			name: "临",
+-			content(storage, player) {
+-				return `临时护甲 ${(player.storage.yomi_ba_temp_hujia || []).length} 点`;
+-			},
+-		},
+-		// 护甲减少 → 同步扣除等量的「临」（先进先出）
+-		trigger: { player: "changeHujiaAfter" },
+-		filter(event) {
+-			return event.num < 0 && !event.yomi_ba_temp_removing;
+-		},
+-		async content(event, trigger, player) {
+-			const list = player.storage.yomi_ba_temp_hujia || [];
+-			list.splice(0, Math.min(-trigger.num, list.length));
+-			refreshTempHujia(player);
+-		},
+-		group: ["yomi_ba_temp_hujia_expire"],
+-	},
+-	// 到点清除：每个「临」都记着它被生成时技能规定的清除时限
+-	yomi_ba_temp_hujia_expire: {
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		trigger: { player: "phaseBegin" },
+-		filter(event, player) {
+-			return (player.storage.yomi_ba_temp_hujia || []).some(i => i.expire === "phaseBegin");
+-		},
+-		async content(event, trigger, player) {
+-			expireTempHujia(player, "phaseBegin");
+-		},
+-	},
+-
+-	// —— 星野（泳装）：衍生技 ——
+-	yomi_ba_huixue: {
+-		forced: true,
+-		locked: true,
+-		sub: true,
+-		charlotte: true,
+-		trigger: { player: "phaseJieshuBegin" },
+-		async content(event, trigger, player) {
+-			await player.recover(1);
+-		},
+-	},
+-	yomi_ba_hongke: {
+-		forced: true,
+-		locked: true,
+-		sub: true,
+-		charlotte: true,
+-		trigger: { player: "changeSkillsAfter" },
+-		filter(event, player) {
+-			return !player.storage.yomi_ba_hongke_done;
+-		},
+-		async content(event, trigger, player) {
+-			player.storage.yomi_ba_hongke_done = true;
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "红克：指定至多三名角色，其造成的超过一点的火焰伤害翻倍",
+-					selectTarget: [0, 3],
+-					ai: aiAlly(player), // 增益：优先自己与队友
+-				})
+-				.forResult();
+-			for (const target of targets || []) {
+-				target.addSkill("yomi_ba_hongke_buff");
+-				// ★ 记录来源：同名 buff 是**公共技能**，两个「星野（泳装）」可能给同一目标上 buff，
+-				//   不分来源地 removeSkill 会把别人的一起摘掉（子代理复核 low 项）
+-				if (!target.storage.yomi_ba_hongke_sources) target.storage.yomi_ba_hongke_sources = [];
+-				target.storage.yomi_ba_hongke_sources.add(player);
+-				if (!player.storage.yomi_ba_hongke_targets) player.storage.yomi_ba_hongke_targets = [];
+-				player.storage.yomi_ba_hongke_targets.push(target);
+-			}
+-		},
+-		onremove(player) {
+-			for (const target of player.storage.yomi_ba_hongke_targets || []) {
+-				// 只摘「自己这一份」：其它来源还在就没收 buff
+-				if (target.storage.yomi_ba_hongke_sources) target.storage.yomi_ba_hongke_sources.remove(player);
+-				if (!(target.storage.yomi_ba_hongke_sources || []).length) {
+-					delete target.storage.yomi_ba_hongke_sources;
+-					target.removeSkill("yomi_ba_hongke_buff");
+-				}
+-			}
+-			delete player.storage.yomi_ba_hongke_targets;
+-			delete player.storage.yomi_ba_hongke_done;
+-		},
+-	},
+-	yomi_ba_jiagong: {
+-		forced: true,
+-		locked: true,
+-		sub: true,
+-		charlotte: true,
+-		trigger: { player: "changeSkillsAfter" },
+-		filter(event, player) {
+-			return !player.storage.yomi_ba_jiagong_done;
+-		},
+-		async content(event, trigger, player) {
+-			player.storage.yomi_ba_jiagong_done = true;
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "加攻：指定至多三名角色，其使用的伤害牌伤害+1",
+-					selectTarget: [0, 3],
+-					ai: aiAlly(player), // 增益：优先自己与队友
+-				})
+-				.forResult();
+-			for (const target of targets || []) {
+-				target.addSkill("yomi_ba_jiagong_buff");
+-				if (!target.storage.yomi_ba_jiagong_sources) target.storage.yomi_ba_jiagong_sources = [];
+-				target.storage.yomi_ba_jiagong_sources.add(player);
+-				if (!player.storage.yomi_ba_jiagong_targets) player.storage.yomi_ba_jiagong_targets = [];
+-				player.storage.yomi_ba_jiagong_targets.push(target);
+-			}
+-		},
+-		onremove(player) {
+-			for (const target of player.storage.yomi_ba_jiagong_targets || []) {
+-				if (target.storage.yomi_ba_jiagong_sources) target.storage.yomi_ba_jiagong_sources.remove(player);
+-				if (!(target.storage.yomi_ba_jiagong_sources || []).length) {
+-					delete target.storage.yomi_ba_jiagong_sources;
+-					target.removeSkill("yomi_ba_jiagong_buff");
+-				}
+-			}
+-			delete player.storage.yomi_ba_jiagong_targets;
+-			delete player.storage.yomi_ba_jiagong_done;
+-		},
+-	},
+-	yomi_ba_hongke_buff: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		trigger: { source: "damageBegin3" },
+-		filter(event, player) {
+-			// 来源全部阵亡后失效（死亡不会触发 onremove，这里按存活来源判断，子代理复核 medium 项）
+-			if (!(player.storage.yomi_ba_hongke_sources || []).some(s => s.isAlive())) return false;
+-			return event.nature === "fire" && event.num > 1;
+-		},
+-		async content(event, trigger, player) {
+-			trigger.num *= 2;
+-		},
+-	},
+-	yomi_ba_jiagong_buff: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		trigger: { source: "damageBegin1" },
+-		filter(event, player) {
+-			if (!(player.storage.yomi_ba_jiagong_sources || []).some(s => s.isAlive())) return false;
+-			return event.card && get.tag(event.card, "damage");
+-		},
+-		async content(event, trigger, player) {
+-			trigger.num += 1;
+-		},
+-	},
+-
+-	// —— 星野（临战）攻击 ——
+-	yomi_ba_yuanshe: {
+-		forced: true,
+-		locked: true,
+-		// 锁定技：其它角色计算与你间距离时+1（本体「飞影」feiying 同款 mod）
+-		mod: {
+-			globalTo(from, to, distance) {
+-				return distance + 1;
+-			},
+-		},
+-		group: ["yomi_ba_yuanshe_reduce"],
+-	},
+-	yomi_ba_yuanshe_reduce: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		trigger: { player: "damageBegin3" },
+-		filter(event, player) {
+-			return event.source && event.source !== player && !event.source.inRange(player);
+-		},
+-		async content(event, trigger, player) {
+-			trigger.num--;
+-		},
+-	},
+-	yomi_ba_sushe: {
+-		trigger: { player: "useCardAfter" },
+-		filter(event, player) {
+-			return get.name(event.card) === "sha" && event.targets && event.targets.length;
+-		},
+-		// ★ AI：手里还有【杀】就别发动 —— 展示手牌等于把信息白给对手，而且本来就没有额外收益
+-		check(event, player) {
+-			return !player.countCards("h", c => get.name(c) === "sha");
+-		},
+-		async content(event, trigger, player) {
+-			const target = trigger.targets[0];
+-			await player.showHandcards("速射");
+-			if (player.countCards("h", card => get.name(card) === "sha")) return;
+-			await target.damage(1, player);
+-			await player.draw(1);
+-		},
+-	},
+-	yomi_ba_jishe: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 3,
+-		filter(event, player) {
+-			return player.countCards("he") >= 3;
+-		},
+-		prompt: "弃置三张牌，对一名其它角色及其相邻角色中的任意名各使用一张【杀】",
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "集射：选择一名其它角色",
+-					filterTarget: lib.filter.notMe,
+-					selectTarget: 1,
+-					ai: aiEnemy(player), // 伤害技能：优先打敌人
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			const center = targets[0];
+-			const list = [center.previous, center, center.next].filter(i => i && i !== player);
+-			const choose = await player
+-				.chooseTarget({
+-					prompt: "集射：选择要使用【杀】的目标",
+-					filterTarget(card, p, t) {
+-						return list.includes(t);
+-					},
+-					selectTarget: [1, list.length],
+-					forced: true,
+-					ai: aiEnemy(player), // 伤害技能：优先打敌人（否则默认按好感度会先打队友）
+-				})
+-				.forResult();
+-			for (const target of choose.targets || []) {
+-				await player.useCard({ name: "sha" }, target).set("addCount", false);
+-			}
+-		},
+-		ai: { order: 1, result: { player: 1 } },
+-	},
+-
+-	// —— 星野（临战）防御：掩体 / 护板 / 降防 ——
+-	yomi_ba_huban: {
+-		forced: true,
+-		locked: true,
+-		trigger: { player: "phaseJieshuBegin" },
+-		async content(event, trigger, player) {
+-			gainTempHujia(player, 1, "phaseBegin", "yomi_ba_huban");
+-		},
+-	},
+-	yomi_ba_jiangfang: {
+-		trigger: { source: "damageBegin3" },
+-		filter(event, player) {
+-			if (get.name(event.card) !== "sha" || !event.player) return false;
+-			// 「本技能不可与自己叠加」：目标身上已经有本技能给的标记时不再询问
+-			return !event.player.hasSkill("yomi_ba_jiangfang_buff");
+-		},
+-		// ★ AI：默认发动没问题，但**只对非队友**（负面标记）
+-		check(event, player) {
+-			const target = event.player;
+-			return !!target && (target === player || get.attitude(player, target) < 0);
+-		},
+-		async content(event, trigger, player) {
+-			const target = trigger.player;
+-			await target.addSkill("yomi_ba_jiangfang_buff");
+-			if (!player.storage.yomi_ba_jiangfang_list) player.storage.yomi_ba_jiangfang_list = [];
+-			player.storage.yomi_ba_jiangfang_list.push(target);
+-		},
+-		group: ["yomi_ba_jiangfang_clear"],
+-	},
+-	yomi_ba_jiangfang_buff: {
+-		sub: true,
+-		mark: true,
+-		intro: {
+-			name: "降防",
+-			content: "直到对方的回合开始前，你受到【杀】的伤害+1。",
+-		},
+-		trigger: { player: "damageBegin3" },
+-		filter(event, player) {
+-			return get.name(event.card) === "sha";
+-		},
+-		async content(event, trigger, player) {
+-			trigger.num++;
+-		},
+-	},
+-	yomi_ba_jiangfang_clear: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		trigger: { player: "phaseBegin" },
+-		filter(event, player) {
+-			return (player.storage.yomi_ba_jiangfang_list || []).length > 0;
+-		},
+-		async content(event, trigger, player) {
+-			for (const target of player.storage.yomi_ba_jiangfang_list) target.removeSkill("yomi_ba_jiangfang_buff");
+-			player.storage.yomi_ba_jiangfang_list = [];
+-		},
+-	},
+-
+-	// —— 梓 / 梓（泳装）——
+-	yomi_ba_pojia: {
+-		trigger: { player: "phaseZhunbeiBegin" },
+-		filter(event, player) {
+-			return game.hasPlayer(current => current !== player);
+-		},
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "破甲：选择一名其它角色，令其受到的下一次伤害+1",
+-					filterTarget: lib.filter.notMe,
+-					selectTarget: 1,
+-					ai(target) {
+-						if (target === player) return -1;
+-						const base = 1 - get.attitude(player, target); // 越敌对越高
+-						// ★ 反贼视角（2026-10-05 用户指定）：优先把"下一次伤害+1"给主公（加速击杀）；
+-						//   但主公**太健康**（比血最少的忠臣还高出 2 点以上）时，改给忠臣削主公羽翼。
+-						if (player.identity === "fan" && target.identity === "zhu") return base + 4;
+-						if (player.identity === "fan" && target.identity === "zhong") {
+-							const zhu = game.findPlayer(p => p.identity === "zhu");
+-							const zhong = game.filterPlayer(p => p.identity === "zhong");
+-							const lowest = zhong.length ? Math.min(...zhong.map(p => p.hp)) : -99;
+-							if (zhu && lowest > -99 && zhu.hp >= lowest + 2) return base + 3;
+-						}
+-						return base;
+-					}, // 负面标记：只给敌人
+-				})
+-				.forResult();
+-			if (targets && targets.length) await targets[0].addSkill("yomi_ba_pojia_buff");
+-		},
+-	},
+-	yomi_ba_pojia2: {
+-		// ⚠️ 必须是 damageAfter（伤害结算**之后**）而不是 damageBegin1：
+-		//   若在伤害前判定，判出来的"下一次伤害+1"会立刻作用在**正在结算的这次伤害**上
+-		//   （实机 2026-10-05：一判定成功就当次伤害立刻 +1，与设计"下一次"不符）
+-		trigger: { source: "damageAfter" },
+-		filter(event, player) {
+-			// 卡面：你的回合中，你对其它角色造成伤害时 —— 且要真的造成了伤害
+-			return _status.currentPhase === player && event.player && event.player !== player && event.num > 0;
+-		},
+-		async content(event, trigger, player) {
+-			const judge = await player.judge(card => (get.suit(card) === "club" ? 1 : 0)).forResult();
+-			if (judge.bool) await trigger.player.addSkill("yomi_ba_pojia_buff");
+-		},
+-	},
+-	yomi_ba_pojia_buff: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		trigger: { player: "damageBegin3" },
+-		async content(event, trigger, player) {
+-			trigger.num++;
+-			player.removeSkill("yomi_ba_pojia_buff");
+-		},
+-	},
+-	yomi_ba_zuandan: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 2,
+-		filter(event, player) {
+-			return player.countCards("he") >= 2 && game.hasPlayer(current => current !== player);
+-		},
+-		prompt: "弃置两张牌，对一名其它角色依次使用两张不计入次数的【杀】",
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "钻弹：选择目标",
+-					filterTarget: lib.filter.notMe,
+-					selectTarget: 1,
+-					ai: aiEnemy(player), // 伤害技能：优先打敌人
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			for (let i = 0; i < 2; i++) await player.useCard({ name: "sha" }, targets[0]).set("addCount", false);
+-		},
+-		ai: { order: 1, result: { player: 1 } },
+-	},
+-	yomi_ba_zuandan2: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 2,
+-		filter(event, player) {
+-			return player.countCards("he") >= 2 && game.hasPlayer(current => current !== player);
+-		},
+-		prompt: "弃置两张牌，对一名其它角色使用一张不计入次数的【杀】，其获得「寒」标记",
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "钻弹：选择目标",
+-					filterTarget: lib.filter.notMe,
+-					selectTarget: 1,
+-					// ★「寒」是负面标记 → AI 不该给队友挂
+-					ai(target) {
+-						if (target === player) return 0;
+-						return 1 - get.attitude(player, target);
+-					},
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			const target = targets[0];
+-			// ⚠️ 目标可能被别的技能改写（如星野【前排】把单目标【杀】改成"以星野为唯一目标"），
+-			//   所以「寒」必须挂给**实际被打到的人**，而不是玩家最初选的那个人（2026-10-06 实机 BUG）。
+-			const evt = player.useCard({ name: "sha" }, target).set("addCount", false);
+-			await evt;
+-			let victims = (evt.targets || []).filter(t => t !== player && t.isAlive());
+-			if (!victims.length) victims = [target];
+-			for (const victim of victims) {
+-				// 「寒」标记上限为一个
+-				if (victim.hasSkill("yomi_ba_han_buff")) continue;
+-				victim.addSkill("yomi_ba_han_buff");
+-				victim.storage.yomi_ba_han_count = 0;
+-				victim.markSkill("yomi_ba_han_buff");
+-				game.log(victim, "获得了「寒」标记");
+-			}
+-		},
+-		ai: { order: 1, result: { player: 1 } },
+-	},
+-	yomi_ba_han_buff: {
+-		sub: true,
+-		marktext: "寒",
+-		intro: {
+-			name: "寒",
+-			content(storage, player) {
+-				return `已判定 ${player.storage.yomi_ba_han_count || 0}/4 次`;
+-			},
+-		},
+-		trigger: { player: "phaseJieshuBegin" },
+-		forced: true,
+-		async content(event, trigger, player) {
+-			player.storage.yomi_ba_han_count = (player.storage.yomi_ba_han_count || 0) + 1;
+-			const judge = await player.judge(card => (get.color(card) === "black" ? 1 : 0)).forResult();
+-			if (judge.bool) await player.damage(1);
+-			if (player.storage.yomi_ba_han_count >= 4) {
+-				delete player.storage.yomi_ba_han_count; // removeSkill 已内部 unmarkSkill，无需再手动取消
+-				player.removeSkill("yomi_ba_han_buff");
+-			} else {
+-				player.markSkill("yomi_ba_han_buff");
+-			}
+-		},
+-	},
+-
+-	// —— 日奈（礼服）：周备 / 开幕 / 终射 ——
+-	// 周备：锁定技，你造成的火焰伤害翻倍，其数值不受你与目标以外效果的影响
+-	//   双保险：主技能与载体都挂 source: damageBegin3/4（幂等，只翻一次），避免单条路径没注册而失效
+-	yomi_ba_zhoubei: {
+-		forced: true,
+-		locked: true,
+-		// 载体（本包同款写法）：与主技能一起挂 damageBegin3/4，幂等函数保证只翻一次
+-		group: ["yomi_ba_zhoubei_lock"],
+-		trigger: { source: ["damageBegin3", "damageBegin4"] },
+-		filter(event, player) {
+-			return event.nature === "fire";
+-		},
+-		async content(event, trigger, player) {
+-			// ⚠️ 判断「哪一步」必须用 event.triggername：damage 类触发的 trigger.name 恒为 "damage"
+-			zhoubeiDamage(event.triggername, trigger, player);
+-		},
+-	},
+-	yomi_ba_zhoubei_lock: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		trigger: { source: ["damageBegin3", "damageBegin4"] },
+-		filter(event, player) {
+-			return event.nature === "fire";
+-		},
+-		async content(event, trigger, player) {
+-			zhoubeiDamage(event.triggername, trigger, player);
+-		},
+-	},
+-	yomi_ba_kaimu: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 3,
+-		filter(event, player) {
+-			return player.countCards("he") >= 3;
+-		},
+-		prompt: "弃置三张牌，直到本阶段结束获得「终射」并进入集中状态",
+-		derivation: ["yomi_ba_zhongshe", "yomi_ba_jizhong"],
+-		async content(event, trigger, player) {
+-			// ⚠️ 必须先把「终射」的全部运行时状态清干净：终射是临时技能，
+-			//   上一阶段结束时技能被摘掉，但它留在 player.storage 上的 lock / lock_at / count / third / pending
+-			//   不会自动清 —— 尤其 lock_at 记的是**上一回合**的已用牌数，新回合 getHistory 归零后
+-			//   自愈解锁永远不成立，于是再次开幕也不会再给终射（2026-10-05 用户实机踩到）。
+-			delete player.storage.yomi_ba_zhongshe_lock;
+-			delete player.storage.yomi_ba_zhongshe_lock_at;
+-			delete player.storage.yomi_ba_zhongshe_own;
+-			delete player.storage.yomi_ba_zhongshe_third;
+-			delete player.storage.yomi_ba_zhongshe_pending;
+-			player.storage.yomi_ba_zhongshe_count = 0;
+-			player.addTempSkill("yomi_ba_zhongshe", { player: ["phaseUseEnd", "phaseAfter"] });
+-			player.addTempSkill("yomi_ba_jizhong", { player: ["phaseUseEnd", "phaseAfter"] });
+-		},
+-			ai: {
+-				// 手牌越多越值得（弃 3 张 → 最多 3 张伤害翻倍的火杀 + 溅射）：≥5 张时高优先
+-				order(card, player) {
+-					if (!player) return 1;
+-					const n = player.countCards("h");
+-					return n >= 5 ? 8 : n >= 4 ? 3 : 0;
+-				},
+-				result: () => ({ player: 1 }),
+-			},
+-	},
+-	yomi_ba_jizhong: {
+-		sub: true,
+-		mark: true,
+-		intro: { name: "集中", content: "你处于集中状态：不受嘲讽类效果影响。" },
+-	},
+-	yomi_ba_zhongshe: {
+-		enable: "phaseUse",
+-		derivation: [],
+-		filter(event, player) {
+-			if (player.storage.yomi_ba_zhongshe_lock) {
+-				// ★ 自愈解锁：发动终射后只要**再使用过任意一张牌**（含装备）即可再次发动。
+-				//   不依赖 useCardAfter 钩子是否生效 —— 用「本回合已使用牌数」直接比大小。
+-				//   lock_at 记的是「发动那一刻的已用牌数 + 1」（+1 ＝下面那张火杀自己），
+-				//   所以火杀本身不算「使用牌后」，必须**额外**再用一张牌才解锁。
+-				const count = player.getHistory("useCard").length;
+-				if (count > (player.storage.yomi_ba_zhongshe_lock_at || 0)) {
+-					delete player.storage.yomi_ba_zhongshe_lock;
+-					delete player.storage.yomi_ba_zhongshe_own;
+-				}
+-			}
+-			return (player.storage.yomi_ba_zhongshe_count || 0) < 3 && !player.storage.yomi_ba_zhongshe_lock && game.hasPlayer(c => c !== player);
+-		},
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "终射：选择一名其它角色",
+-					filterTarget: lib.filter.notMe,
+-					selectTarget: 1,
+-					ai: aiEnemy(player), // 伤害技能：优先打敌人
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			// ⚠️ 次数必须在**确认目标之后**才 +1：否则玩家取消会白烧一次（第 3 次取消更会导致本阶段再也发不出）
+-			player.storage.yomi_ba_zhongshe_count = (player.storage.yomi_ba_zhongshe_count || 0) + 1;
+-			const third = player.storage.yomi_ba_zhongshe_count === 3;
+-			const target = targets[0];
+-			player.storage.yomi_ba_zhongshe_lock = true; // 使用牌后才可再次发动
+-			// 记下「已用牌数 + 1」（+1 是下面那张火杀自己）→ 之后 filter 用它可以自愈解锁
+-			player.storage.yomi_ba_zhongshe_lock_at = player.getHistory("useCard").length + 1;
+-			player.storage.yomi_ba_zhongshe_own = true; // 下一次 useCardAfter 是自己这张火杀，不算「使用牌后」
+-			player.addTempSkill("yomi_ba_zhongshe_watch", { player: ["phaseUseEnd", "phaseAfter"] });
+-			// 第三次发动：本阶段内造成的所有伤害翻倍
+-			// ★ 终射语音（用户 2026-10-05 设定）：第 3 次发动播「（3）」那一组，否则播普通组
+-			//   导入时普通音频排在 1~3，带（3）的排在 4~6（见 tools/voice_auto_import.py）
+-			{
+-				const base = third ? 4 : 1;
+-				const idx = [base, base + 1, base + 2].randomGet();
+-				if (lib.config.background_speak) game.playAudio("skill", `yomi_ba_zhongshe${idx}.ogg`);
+-				const text = lib.translate[`#yomi_ba_zhongshe${idx}`];
+-				if (text) player.say(text);
+-			}
+-			if (third) {
+-				// 第三次发动：本次火杀造成的一切伤害翻倍（载体 filter 读的就是这个键）
+-				player.storage.yomi_ba_zhongshe_third = true;
+-				player.addTempSkill("yomi_ba_zhongshe_double", { player: ["phaseUseEnd", "phaseAfter"] });
+-			}
+-			player.storage.yomi_ba_zhongshe_pending = { target, third };
+-			await player.useCard({ name: "sha", nature: "fire" }, target).set("addCount", false);
+-		},
+-		ai: { order: 1, result: { player: 1 } },
+-	},
+-	yomi_ba_zhongshe_watch: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		// ⚠️ damageAfter 必须用 **source** 角色（本体同理，见 character/diy/skill.js:9020）：
+-		//   用 player 的话只会捕获「自己受到伤害」，根本等不到自己造成的伤害 → 判定/邻家伤害永远不触发。
+-		trigger: { player: "useCardAfter", source: "damageAfter" },
+-		filter(event, player, triggername) {
+-			// ⚠️ 触发技 filter 第一参是「被触发的事件」（没有 triggername 字段），触发名在**第三参**
+-			//   这里写错 → useCardAfter 分支从未生效（实机"终射不刷新"的元凶之一）
+-			if (triggername === "useCardAfter") return true;
+-			return !!player.storage.yomi_ba_zhongshe_pending;
+-		},
+-		async content(event, trigger, player) {
+-			if (event.triggername === "useCardAfter") {
+-				if (player.storage.yomi_ba_zhongshe_own) {
+-					// 自己这张火杀结算完：它不算「使用牌后」，但要作废挂起（避免判定延后到下一次伤害）
+-					delete player.storage.yomi_ba_zhongshe_own;
+-				} else if (trigger.player === player) {
+-					// 真正又使用了一张牌 → 刷新，允许再次发动
+-					delete player.storage.yomi_ba_zhongshe_lock;
+-				}
+-				delete player.storage.yomi_ba_zhongshe_pending;
+-				delete player.storage.yomi_ba_zhongshe_third; // 翻倍只作用于本次火杀
+-				return;
+-			}
+-			const pending = player.storage.yomi_ba_zhongshe_pending;
+-			// 只认「那一张火杀」造成的、且真的造成了（num>0）的伤害
+-			if (!pending) {
+-				// 窗口内没有「那张火杀」的伤害（如被闪）→ 清旗兜底，避免翻倍载体残留到本阶段其它伤害上
+-				delete player.storage.yomi_ba_zhongshe_third;
+-				player.removeSkill("yomi_ba_zhongshe_double");
+-				return;
+-			}
+-			if (trigger.source !== player) return;
+-			if (!trigger.card || get.name(trigger.card) !== "sha") return;
+-			if (!(trigger.num > 0)) return;
+-			delete player.storage.yomi_ba_zhongshe_pending;
+-			// ★ 以**实际受伤者**为基准（目标可能被【前排】之类的技能改写，2026-10-06）
+-			const target = (trigger.player && trigger.player.isAlive() ? trigger.player : null) || pending.target;
+-			const { bool } = await player
+-				.chooseBool("终射：进行一次判定，若为红色，对目标的上家或下家造成0.5点火焰伤害？")
+-				// ★ AI：上家与下家**都是队友**时不做这个判定（避免误伤）
+-				.set("ai", () => {
+-					const list = [target.previous, target.next].filter(i => i && i !== player);
+-					if (!list.length) return false;
+-					return list.some(i => get.attitude(player, i) < 0);
+-				})
+-				.forResult();
+-			if (!bool) {
+-				clearZhongsheDouble(player);
+-				return;
+-			}
+-			const judge = await player.judge(card => (get.color(card) === "red" ? 1 : 0)).forResult();
+-			if (!judge.bool) {
+-				clearZhongsheDouble(player);
+-				return;
+-			}
+-			const list = [target.previous, target.next].filter(i => i && i !== player);
+-			if (!list.length) {
+-				clearZhongsheDouble(player);
+-				return;
+-			}
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "终射：选择目标的上家或下家",
+-					filterTarget(card, p, t) {
+-						return list.includes(t);
+-					},
+-					selectTarget: 1,
+-					forced: true,
+-					ai: aiEnemy(player), // 溅射也优先打敌人
+-				})
+-				.forResult();
+-			if (targets && targets.length) {
+-				player.storage.yomi_ba_zhongshe_neighbor = true;
+-				await targets[0].damage(0.5, player, "fire");
+-				delete player.storage.yomi_ba_zhongshe_neighbor;
+-			}
+-			clearZhongsheDouble(player);
+-		},
+-	},
+-	yomi_ba_xuanyun: {
+-		round: 1,
+-		trigger: { global: "phaseBegin" },
+-		filter(event, player) {
+-			return game.hasPlayer(current => current !== player);
+-		},
+-		// ★ AI：只有此刻确实存在敌人可指时才发动（否则选出 0 人＝白烧「每轮一次」）
+-		check(event, player) {
+-			return game.hasPlayer(t => t !== player && get.attitude(player, t) < 0);
+-		},
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "眩晕：指定至多三名其它角色，其在本回合使用的第一张牌会被抵消",
+-					filterTarget: lib.filter.notMe,
+-					selectTarget: [0, 3],
+-					// ★ 眩晕只给敌人，且威胁越大（手牌越多）越优先
+-					ai(target) {
+-						if (target === player) return -1;
+-						if (get.attitude(player, target) >= 0) return -1;
+-						return 1 + target.countCards("h") * 0.5;
+-					},
+-				})
+-				.forResult();
+-			for (const target of targets || []) {
+-				target.addTempSkill("yomi_ba_xuanyun_buff", { global: "phaseAfter" });
+-				target.storage.yomi_ba_xuanyun_used = false;
+-				target.markSkill("yomi_ba_xuanyun_buff");
+-			}
+-		},
+-	},
+-	yomi_ba_xuanyun_buff: {
+-		sub: true,
+-		marktext: "眩",
+-		intro: { name: "眩晕", content: "你本回合使用的第一张牌会被抵消。" },
+-		trigger: { player: "useCard" },
+-		forced: true,
+-		silent: true,
+-		firstDo: true,
+-		filter(event, player) {
+-			return !player.storage.yomi_ba_xuanyun_used;
+-		},
+-		async content(event, trigger, player) {
+-			player.storage.yomi_ba_xuanyun_used = true;
+-			trigger.neutralize();
+-			game.log(player, "被【眩晕】抵消了", trigger.card);
+-		},
+-	},
+-	yomi_ba_zhongmu: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 2,
+-		filter(event, player) {
+-			return player.countCards("he") >= 2;
+-		},
+-		prompt: "弃置两张牌，对至多三名与你距离2以内的角色各使用一张不计入次数的火【杀】",
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "终幕：选择至多三名与你距离2以内的角色",
+-					filterTarget(card, p, t) {
+-						return t !== p && get.distance(p, t) <= 2;
+-					},
+-					selectTarget: [1, 3],
+-					forced: true,
+-					ai: aiEnemy(player),
+-				})
+-				.forResult();
+-			for (const target of targets || []) {
+-				await player.useCard({ name: "sha", nature: "fire" }, target).set("addCount", false);
+-			}
+-		},
+-		ai: {
+-			// 距离 2 以内的残血敌人越多越值得
+-			order(card, player) {
+-				if (!player) return 1;
+-				const weak = game
+-					.filterPlayer(t => t !== player && get.attitude(player, t) < 0)
+-					.filter(t => t.hp <= 2 && get.distance(player, t) <= 2).length;
+-				return 1 + weak * 3;
+-			},
+-			result: () => ({ player: 1 }),
+-		},
+-	},
+-	yomi_ba_huandan: {
+-		round: 1,
+-		trigger: { player: "useCardAfter" },
+-		filter(event, player) {
+-			return get.name(event.card) === "sha" && event.targets && event.targets.length;
+-		},
+-		// ★ AI：手里有【杀】就不发动，避免手牌信息泄露
+-		check(event, player) {
+-			return !player.countCards("h", c => get.name(c) === "sha");
+-		},
+-		async content(event, trigger, player) {
+-			const target = trigger.targets[0];
+-			await player.showHandcards("换弹");
+-			if (player.countCards("h", card => get.name(card) === "sha")) return;
+-			await player.draw(1);
+-			player.storage.yomi_ba_huandan_target = target;
+-			player.addSkill("yomi_ba_huandan_buff");
+-		},
+-	},
+-	yomi_ba_zhongmu2: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 3,
+-		filter(event, player) {
+-			return player.countCards("he") >= 3;
+-		},
+-		prompt: "弃置三张牌，对一名或两名相邻的角色各依次使用两张不计入次数的火【杀】",
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "终幕：选择一名或两名相邻的角色",
+-					filterTarget(card, p, t) {
+-						return t !== p;
+-					},
+-					selectTarget: [1, 2],
+-					forced: true,
+-					ai: aiEnemy(player),
+-				})
+-				.forResult();
+-			let list = targets || [];
+-			if (list.length === 2 && list[0].next !== list[1] && list[0].previous !== list[1]) {
+-				list.length = 1; // 两名必须相邻（环形相邻也算）→ 不相邻时只对第一位生效
+-			}
+-			for (const target of list) {
+-				for (let i = 0; i < 2; i++) {
+-					await player.useCard({ name: "sha", nature: "fire" }, target).set("addCount", false);
+-				}
+-			}
+-		},
+-		ai: {
+-			// 衡量「弃 3 张牌」与「2 张火杀收益」：手上用不出去的牌（价值 ≤4）够 3 张才划算
+-			order(card, player) {
+-				if (!player) return 1;
+-				const low = player.getCards("h").filter(c => (get.value(c, player) || 1) <= 4).length;
+-				return low >= 3 ? 5 : 1;
+-			},
+-			result: () => ({ player: 1 }),
+-		},
+-	},
+-	yomi_ba_huandan_buff: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		trigger: { source: "damageBegin1" },
+-		filter(event, player) {
+-			return player.storage.yomi_ba_huandan_target && event.player === player.storage.yomi_ba_huandan_target;
+-		},
+-		async content(event, trigger, player) {
+-			trigger.num++;
+-			delete player.storage.yomi_ba_huandan_target;
+-			player.removeSkill("yomi_ba_huandan_buff");
+-		},
+-	},
+-
+-};
+-
+-/** 通用 AI：越敌对越优先（伤害/负面技能用；自己不给分） */
+-function aiEnemy(player) {
+-	return function (target) {
+-		if (target === player) return -1;
+-		return 1 - get.attitude(player, target);
+-	};
+-}
+-
+-/** 通用 AI：越友方越优先、**自己永远最高**（增益/回复类技能用） */
+-function aiAlly(player) {
+-	return function (target) {
+-		if (target === player) return 4; // 比任何队友都高，保证 AI 先给自己
+-		return 1 + get.attitude(player, target) / 2;
+-	};
+-}
+-
+-// ================================================================
+-// 前排 —— 本包第一个「会重复出现很多次」的技能
+-//   卡面：游戏开始时，你选择一名其它角色，只要你存活，其使用伤害牌时必须尽可能包括你为目标。
+-//   实现要点：
+-//     · 主技能在 gameStart（以及自己复活时）让玩家强制选一名其他角色，记入 `storage[<id>_target]`；
+-//     · 载体子技能挂在**自己**身上做全局观察：被盯的人使用伤害牌、且你不在目标里、
+-//       且你能被合法指定（含攻击范围）时，把你加进目标列表（`trigger.targets.add(player)`）。
+-//       先例：character/jsrg/skill.js:186（`trigger.targets.add(player)` + `lib.filter.targetEnabled`）。
+-//     · 「只要你存活」：载体只在自己身上，自己不存活就不会触发。
+-// ================================================================
+-function makeQianpai(id) {
+-	const force = `${id}_force`;
+-	return {
+-		[id]: {
+-			forced: true,
+-			locked: true,
+-			// 专属台词 2 条（.ogg）：#<技能id>1/2 ↔ audio/skill/<技能id>1|2.ogg
+-			audio: "2:ogg",
+-			// 【设计确认 2026-10-05】选择时机 = **开局（游戏开始时）**，卡面原文即如此（不是自己第一个回合）。
+-			//   三个时机一起挂、谁先到谁选，选完用 `_chosen` 占位，后续时机自动跳过：
+-			//     · global:"gameStart"   —— 身份模式开局时 mode 会 trigger("gameStart")（mode/identity.js:416）
+-			//     · player:"enterGame"   —— 引擎为角色建的 enterGame 事件（game/index.js:9985 triggerEnter）
+-			//     · player:"phaseBegin"  —— 兜底：万一前两个时机都没赶上，至少自己第一个回合能选上
+-			//   触发时会在战斗日志里打印「触发时机」，便于确认究竟是哪个时机生效。
+-			trigger: { global: ["gameStart"], player: ["enterGame", "phaseBegin"] },
+-			filter(event, player) {
+-				return !player.storage[`${id}_chosen`];
+-			},
+-			async content(event, trigger, player) {
+-				if (player.storage[`${id}_chosen`]) {
+-					return;
+-				}
+-				// 先占位：同一次开局里多个时机不会重复弹窗
+-				player.storage[`${id}_chosen`] = true;
+-				const timing = event.triggername || trigger.triggername || trigger.name || "?";
+-				const { bool, targets } = await player
+-					.chooseTarget({
+-						prompt: "前排：选择一名其他角色（只要你存活，其使用伤害牌时必须尽可能以你为目标）",
+-						filterTarget: lib.filter.notMe,
+-						selectTarget: 1,
+-						forced: true,
+-						ai(target) {
+-							// 优先盯住敌对角色
+-							return -get.attitude(player, target);
+-						},
+-					})
+-					.forResult();
+-				if (!bool || !targets || !targets.length) {
+-					// 没选上（forced 理论上不会发生）→ 解除占位，留给下一个时机再问
+-					delete player.storage[`${id}_chosen`];
+-					game.log(player, "的【前排】选择目标失败（触发时机：" + timing + "），将在下个时机重试");
+-					return;
+-				}
+-				player.storage[`${id}_target`] = targets[0];
+-				player.addSkill(force);
+-				game.log(player, "的【前排】在【" + timing + "】时机紧盯", targets[0]);
+-			},
+-		},
+-		[force]: {
+-			sub: true,
+-			charlotte: true,
+-			silent: true,
+-			forced: true,
+-			popup: false,
+-			nopop: true,
+-			trigger: { global: "useCard" },
+-			filter(event, player) {
+-				// 集中状态（日奈礼服【开幕】）：不受嘲讽类效果影响 —— 注意要看**被强制的一方**
+-				//   （event.player 就是被前排盯住的那名角色）；写成技能持有者（星野）是死代码（子代理复核指出）
+-				if (event.player && event.player.hasSkill("yomi_ba_jizhong")) {
+-					return false;
+-				}
+-				// 「被要求使用/响应」的牌不改目标（如借刀杀人目标被 filterTarget 锁死，改了会自相矛盾）
+-				if (event.respondTo) {
+-					return false;
+-				}
+-				const target = player.storage[`${id}_target`];
+-				if (!target || !player.isAlive()) {
+-					return false;
+-				}
+-				// 只盯「被选定那名角色」使用的牌
+-				if (event.player !== target) {
+-					return false;
+-				}
+-				if (!event.card || !get.tag(event.card, "damage")) {
+-					return false;
+-				}
+-				if ((event.targets || []).includes(player)) {
+-					return false;
+-				}
+-				// 已被排除的牌不再把你加回去（否则可能出现"唯一目标是被排除的你"→ 谁都不结算）
+-				if (event.all_excluded || (event.excluded || []).includes(player)) {
+-					return false;
+-				}
+-				if (!event.targets || !event.targets.length) {
+-					return false;
+-				}
+-				// 「尽可能」= 你在合法目标之内（含攻击范围）才强制加入
+-				// 用 targetEnabled2（本体"追加目标"类技能的统一用法，覆盖 mod.targetEnabled / modTarget 等）
+-				return lib.filter.targetEnabled2(event.card, event.player, player) && lib.filter.targetInRange(event.card, event.player, player);
+-			},
+-			async content(event, trigger, player) {
+-				// ★ 「必须尽可能包括你为目标」的落地（2026-10-05 用户实机纠正）：
+-				//   「尽可能」= 在能选多目标时**把你加进去**；但**单目标**伤害牌（如普通【杀】）
+-				//   必须以你为**唯一**目标 —— 不能让他去打别人，然后再把你补进来。
+-				//   判定方式用「实际目标数 === 1」而不是卡的 selectTarget：这样方天画戟这类
+-				//   临时扩目标的情况仍然只是「把你加进去」，不会被强制清空。
+-				//   ⚠️ 必须**重新赋值数组**：useCard 常常直接引用调用方的 targets 数组
+-				//   （player.useCard 对 players 数组是引用赋值），就地清空会污染调用方（子代理复核指出）。
+-				if (trigger.targets.length === 1) {
+-					trigger.targets = [player];
+-					game.log(player, "因【前排】成为了", trigger.card, "的唯一目标");
+-					return;
+-				}
+-				trigger.targets = trigger.targets.concat(player);
+-				game.log(player, "因【前排】成为了", trigger.card, "的目标");
+-			},
+-		},
+-	};
+-}
+-
+-// ================================================================
+-// 推进（id 保持 yomi_ba_tuijin：推近/推进 拼音相同，不动 id）
+-//   卡面：每轮限一次，其它角色的回合，当其使用一张牌时，你可弃两张牌，令该使用无效，
+-//         该牌回到手牌且直到其下个回合开始时不可使用。那之后，你获得一点护甲值。
+-//   实现要点：
+-//     · `round: 1` = 引擎原生「每轮限一次」。
+-//     · 「令该使用无效」= `trigger.neutralize()`（引擎标准：untrigger + finish，见 gameEvent.ts:692）。
+-//     · 「该牌回到手牌」= 无效后立刻 `user.gain(cards, "gain2")`。
+-//     · 「直到其下个回合开始时不可使用」= 在牌实例上记 `storage[<id>_ban] = user.phaseNumber`，
+-//       并给使用者挂载体子技能：`mod.cardEnabled` 判「标记 === user.phaseNumber」时禁用；
+-//       使用者下个回合开始时 `phaseNumber` 自增 → 标记自然失效（无需额外清理）。
+-//     · 「你获得一点护甲值」= `player.changeHujia(1)`。
+-// ================================================================
+-function makeTuijin(id) {
+-	const ban = `${id}_ban`;
+-	return {
+-		[id]: {
+-			round: 1,
+-			// 专属台词 2 条（.ogg）
+-			audio: "2:ogg",
+-			trigger: { global: "useCard" },
+-			// ★ AI 开关（触发技只有 check 能控）：推进=弃 2 张换「一张牌失效」+1 护甲，
+-			//   弃掉的牌对手之后仍可能用，所以只有**关键时机**才值得（2026-10-05 用户指定的三种情形）
+-			check(event, player) {
+-				const user = event.player;
+-				const card = event.card;
+-				if (!user || !card || user === player) return false;
+-				const name = get.name(card);
+-				const targets = event.targets || [];
+-				// ① 被拆/被顺、且自己手牌 ≤2：既保住之后的出牌能力，又顺手拿 1 护甲
+-				if ((name === "guohe" || name === "shunshou") && targets.includes(player) && player.countCards("h") <= 2) {
+-					return true;
+-				}
+-				// ② 敌人要用【酒】/【桃】（自救或救队友）：打断关键回复，可能直接送走一个敌人
+-				if ((name === "tao" || name === "jiu") && get.attitude(player, user) < 0) {
+-					return true;
+-				}
+-				// ③ 敌人对己方残血角色（含主公）使用伤害牌：保护
+-				if (get.tag(card, "damage") && get.attitude(player, user) < 0) {
+-					if (targets.some(t => t.hp <= 2 && (t === player || get.attitude(player, t) > 0))) return true;
+-				}
+-				return false;
+-			},
+-			filter(event, player) {
+-				// 只在自己以外的角色回合、其使用一张**实体牌**时可用（虚拟牌无法「回到手牌」）
+-				if (event.player === player) {
+-					return false;
+-				}
+-				if (_status.currentPhase === player) {
+-					return false;
+-				}
+-				if (!event.card || !event.cards || !event.cards.length) {
+-					return false;
+-				}
+-				// 代价是弃两张牌
+-				return player.countCards("he") >= 2;
+-			},
+-			async content(event, trigger, player) {
+-				const user = trigger.player;
+-				const cards = trigger.cards.slice();
+-				const discard = await player
+-					.chooseToDiscard({
+-						position: "he",
+-						selectCard: 2,
+-						forced: true,
+-						prompt: "推进：弃两张牌，令此牌的使用无效并回到其手牌",
+-					})
+-					.forResult();
+-				if (!discard.bool || !discard.cards || discard.cards.length < 2) {
+-					return;
+-				}
+-				game.log(player, "发动【推进】，令", user, "使用的", trigger.card, "无效");
+-				// ① 令该使用无效
+-				trigger.neutralize();
+-				// ② 该牌回到使用者手牌
+-				if (cards.length) {
+-					await user.gain(cards, "gain2");
+-					// ③ 直到其下个回合开始时不可使用
+-					for (const card of cards) {
+-						card.storage[`${id}_ban`] = user.phaseNumber;
+-					}
+-					if (!user.hasSkill(ban)) {
+-						user.addSkill(ban);
+-					}
+-				}
+-				// ④ 你获得一点护甲值
+-				await player.changeHujia(1);
+-			},
+-		},
+-		[ban]: {
+-			sub: true,
+-			charlotte: true,
+-			silent: true,
+-			forced: true,
+-			// 自己的回合开始 → 清掉过期标记，身上再没有被禁的牌就摘掉载体（避免残留技能）
+-			trigger: { player: "phaseBegin" },
+-			async content(event, trigger, player) {
+-				let still = false;
+-				for (const card of player.getCards("hej")) {
+-					const mark = card.storage[`${id}_ban`];
+-					if (mark === undefined) {
+-						continue;
+-					}
+-					if (mark < player.phaseNumber) {
+-						// 已过期（使用者回合已翻页）→ 删除标记
+-						delete card.storage[`${id}_ban`];
+-					} else {
+-						still = true;
+-					}
+-				}
+-				if (!still) {
+-					player.removeSkill(ban);
+-				}
+-			},
+-			mod: {
+-				// ⚠️ 必须用 `cardEnabled2` 而不是 `cardEnabled`（2026-10-05 实机踩坑：被禁的【桃】马上又被用掉）：
+-				//   · 引擎的 `cardEnabled` 会先把实体牌 `get.autoViewAs` 成虚拟牌再查 mod → 牌实例上的标记丢了；
+-				//   · `cardEnabled2` 只在「传入的是实体牌」时被调用（library/index.js:11320 / 11370），
+-				//     且 **cardEnabled 与 cardRespondable 都会优先查 cardEnabled2**；
+-				//   · 濒死时用【桃】自救走的是 respond 通道（cardRespondable），只有 cardEnabled2 拦得住。
+-				//   标记里存的是「被禁当时」使用者的 phaseNumber；到其下个回合开始时自增 → 自动解禁。
+-				cardEnabled2(card, player) {
+-					if (card.storage[`${id}_ban`] === player.phaseNumber) {
+-						return false;
+-					}
+-				},
+-			},
+-		},
+-	};
+-}
+-
+-// ================================================================
+-// 缓救
+-//   卡面：觉醒技，任意角色回合结束时，若你的体力为1，你觉醒并回复一点体力，
+-//         之后的四个回合结束时，你均会回复一点体力。
+-//   实现要点：
+-//     · 主技能 `unique: true` + `forced: true`，触发时机 `global: "phaseJieshuBegin"`（回合结束时）。
+-//     · 觉醒后挂载体子技能：之后每个回合结束时回复 1 点，共 4 次；用 `game.phaseNumber`
+-//       跳过觉醒当下的那一次（否则同一次回合结束会回两次）。
+-// ================================================================
+-function makeHuanjiu(id) {
+-	const heal = `${id}_heal`;
+-	return {
+-		[id]: {
+-			unique: true,
+-			forced: true,
+-			locked: true,
+-			// 专属台词 2 条（.ogg）
+-			audio: "2:ogg",
+-			skillAnimation: true,
+-			animationColor: "legend",
+-			trigger: { global: "phaseJieshuBegin" },
+-			filter(event, player) {
+-				return !player.storage[id] && player.hp === 1;
+-			},
+-			async content(event, trigger, player) {
+-				player.awakenSkill(id);
+-				player.storage[id] = true;
+-				game.log(player, "觉醒【缓救】");
+-				// 觉醒当下先回复 1 点
+-				await player.recover(1);
+-				// 之后的四个回合结束时各回复 1 点（跳过本次）
+-				player.storage[`${id}_count`] = 4;
+-				player.storage[`${id}_skip`] = game.phaseNumber;
+-				if (!player.hasSkill(heal)) {
+-					player.addSkill(heal);
+-				}
+-			},
+-		},
+-		[heal]: {
+-			sub: true,
+-			charlotte: true,
+-			silent: true,
+-			forced: true,
+-			trigger: { global: "phaseJieshuBegin" },
+-			filter(event, player) {
+-				if (!player.storage[`${id}_count`]) {
+-					return false;
+-				}
+-				// 觉醒当下的那个回合不再重复回复
+-				return player.storage[`${id}_skip`] !== game.phaseNumber;
+-			},
+-			async content(event, trigger, player) {
+-				player.storage[`${id}_count`]--;
+-				await player.recover(1);
+-				if (!player.storage[`${id}_count`]) {
+-					player.removeSkill(heal);
+-				}
+-			},
+-		},
+-	};
+-}
+-
+-// ================================================================
+-// 工厂函数（同名技能；每次返回全新对象）
+-// ================================================================
+-function makeHoupai(id) {
+-	return {
+-		[id]: {
+-			forced: true,
+-			locked: true,
+-			// 锁定技：其它角色计算与你间距离时+1（对照本体「马术」mashu 的 distance 写法）
+-			mod: {
+-				globalTo(from, to, distance) {
+-					return distance + 1;
+-				},
+-			},
+-		},
+-	};
+-}
+-
+-// 冲浪：每轮开始时，弃一张牌，以此具有「英姿」「回血」「红克」「加攻」直到本技能再次发动
+-function makeChonglang(id) {
+-	return {
+-		[id]: {
+-			// 卡面没有「可以」→ **必发**：每轮开始必定弃一张牌（拿不出牌则无效果），不询问是否发动（2026-10-05 用户要求）
+-			forced: true,
+-			// 不显式写 silent：引擎对 yomi_+trigger+forced 会自动补 silent，
+-			// 而显式 silent 会让 popup 变 false → 自动语音播放被跳过（复查 high 项）
+-			trigger: { global: "roundStart" },
+-			filter(event, player) {
+-				return player.countCards("he") > 0;
+-			},
+-			derivation: ["yingzi", "yomi_ba_huixue", "yomi_ba_hongke", "yomi_ba_jiagong"],
+-			async content(event, trigger, player) {
+-				const discard = await player
+-					.chooseToDiscard({ position: "he", selectCard: 1, forced: true, prompt: "冲浪：弃置一张牌" })
+-					.forResult();
+-				if (!discard.bool || !discard.cards || !discard.cards.length) return;
+-				// ★ 重新获得衍生技之前，先清掉「已选过目标」的旗标：
+-				//   红克/加攻 的效果是「获得本技能时指定至多三名角色」，
+-				//   第二轮及以后重新获得它们时，必须**重新弹窗选人**（2026-10-05 用户要求）。
+-				delete player.storage.yomi_ba_hongke_done;
+-				delete player.storage.yomi_ba_jiagong_done;
+-				// 衍生技：先失去先前获得的，再获得新的（addAdditionalSkills 的 keep=false 语义）
+-				//   → 失去时会触发各自的 onremove（撤掉旧目标身上的 buff），获得时触发
+-				//     changeSkillsAfter → 红克/加攻 重新询问目标
+-				// ★ 重新授予衍生技：必须走引擎 API（它负责 additionalSkills 记账 + game.broadcast），
+-				//   并且**先显式移除旧的**——只有真正 removeSkill 才会触发各自 onremove
+-				//   （撤掉上一轮给目标挂的 buff），随后 changeSkillsAfter 再让 红克/加攻 重新弹窗选人。
+-				//   ⚠️ 不要手拼 changeSkills：那样技能会被写进 player.skills，之后再也回收不掉（曾踩）。
+-				const grant = ["yingzi", "yomi_ba_huixue", "yomi_ba_hongke", "yomi_ba_jiagong"];
+-				if (player.additionalSkills[id]) {
+-					await player.removeAdditionalSkills(id);
+-				}
+-				// keep 传 true：上面已显式移除；传 false 会因同名同时出现在 add/remove 而被去重成空操作
+-				await player.addAdditionalSkills(id, grant, true).set("popup", false);
+-				game.log(player, "的【冲浪】开始生效");
+-			},
+-		},
+-	};
+-}
+-
+-// 掩体：出牌阶段限一次，弃两张牌，直到你下次发动本技能，获得两点临时护甲；有护甲时受到的属性伤害减半
+-function makeYanti(id) {
+-	const half = `${id}_half`;
+-	return {
+-		[id]: {
+-			enable: "phaseUse",
+-			usable: 1,
+-			position: "he",
+-			filterCard: true,
+-			selectCard: 2,
+-			filter(event, player) {
+-				return player.countCards("he") >= 2;
+-			},
+-			prompt: "弃置两张牌，获得两点临时护甲值（直到本技能下次发动）",
+-			async content(event, trigger, player) {
+-				// 「直到你下次发动本技能」→ 先清掉本技能上一次给的临时护甲
+-				clearTempHujiaByKey(player, id);
+-				gainTempHujia(player, 2, null, id);
+-				player.addSkill(half);
+-			},
+-			ai: {
+-				// 换来的护甲是**临时**的：满血（≥5）时不想用，除非手上有两张低价值牌顺便换
+-				order(card, player) {
+-					if (!player) return 1;
+-					if (player.hp >= 5) {
+-						const low = player.getCards("h").filter(c => (get.value(c, player) || 1) <= 4).length;
+-						return low >= 2 ? 2 : 0;
+-					}
+-					return 2;
+-				},
+-				result: () => ({ player: 1 }),
+-			},
+-		},
+-		[half]: {
+-			sub: true,
+-			charlotte: true,
+-			silent: true,
+-			forced: true,
+-			popup: false,
+-			trigger: { player: "damageBegin3" },
+-			filter(event, player) {
+-				return player.hujia > 0 && !!event.nature;
+-			},
+-			async content(event, trigger, player) {
+-				trigger.num = Math.floor(trigger.num / 2);
+-			},
+-			onremove(player) {
+-				// 临时护甲由「临」标记统一管理，这里不额外处理
+-			},
+-		},
+-	};
+-}
+-
+-// 压射：真伤 —— ① 基础 ② 增益 ③ 大于1则-1 ④ 拆成若干 1 点 ⑤ 每点不可被归零；无视护甲；结束阶段摸两张
+-function makeYashe(id) {
+-	const guard = `${id}_guard`;
+-	const draw = `${id}_draw`;
+-	return {
+-		[id]: {
+-			forced: true,
+-			locked: true,
+-			group: [guard, `${id}_true`, draw],
+-		},
+-		[guard]: {
+-			sub: true,
+-			charlotte: true,
+-			silent: true,
+-			forced: true,
+-			popup: false,
+-			trigger: { source: "damageBegin4" },
+-			filter(event, player) {
+-				return event.num > 0 && !event[`${id}_point`];
+-			},
+-			// ⚠️ 必须是 async：同步 content 会被引擎的 StepCompiler 重新编译成独立函数，
+-			//   工厂闭包里的 `id` 在编译后就丢了 → 运行期报 `id is not defined`（2026-10-05 实机踩到）。
+-			//   凡是引用工厂闭包变量的 content 一律写成 async。
+-			async content(event, trigger, player) {
+-				// 压射是纯容器技能（自身没有触发时机）→ 语音在这里手动播，只播一次
+-				game.trySkillAudio("yomi_ba_yashe", player, true, true);
+-				// ③ 大于 1 则 -1
+-				let num = trigger.num;
+-				if (num < 1) return; // 不足 1 点的小数伤害不拆分（避免 for 循环多打一次）
+-				if (num > 1) num -= 1;
+-				if (num <= 0) return;
+-				// ④ 取消原伤害，拆成 num 个 1 点
+-				trigger.cancel();
+-				for (let i = 0; i < num; i++) {
+-					const next = trigger.player.damage(1, player, trigger.nature, trigger.card);
+-					next.set(`${id}_point`, true); // ⑤ 标记「拆分出的 1 点」
+-					next.set("nohujia", true); // 无视护甲值
+-				}
+-				game.log(player, "的【压射】把", get.cnNumber(trigger.num), "点伤害拆成", get.cnNumber(num), "次 1 点");
+-			},
+-		},
+-		[`${id}_true`]: {
+-			sub: true,
+-			charlotte: true,
+-			silent: true,
+-			forced: true,
+-			popup: false,
+-			trigger: { source: ["damageBegin2", "damageBegin3"] },
+-			filter(event, player) {
+-				// 拆分点：无条件归一到 1（既保证"不为 0"，也防止加攻/破甲等对拆分点二次加成）
+-				return !!event[`${id}_point`];
+-			},
+-			async content(event, trigger, player) {
+-				trigger.num = 1; // ⑤ 每一点不会因任何情况变为 0
+-			},
+-		},
+-		[draw]: {
+-			sub: true,
+-			charlotte: true,
+-			silent: true,
+-			forced: true,
+-			popup: false,
+-			trigger: { player: "phaseJieshuBegin" },
+-			filter(event, player) {
+-				// getHistory 的文档明确是「当前回合内该玩家指定类型的历史事件」
+-				return player.getHistory("useCard").length >= 2;
+-			},
+-			async content(event, trigger, player) {
+-				await player.draw(2);
+-			},
+-		},
+-	};
+-}
+-// ================================================================
+-// 临时护甲（「临」标记）—— 用户 2026-10-05 设计
+-//   · 临时护甲直接加进 player.hujia（等价护甲，优先被消耗）
+-//   · 同时在 storage 里为「每一点」记一条 {key, expire}，标记显示「临」
+-//   · 护甲减少时先进先出扣除；到 expire 时限若标记仍在 → 扣掉对应护甲（不算受伤/失去体力）
+-// ================================================================
+-function refreshTempHujia(player) {
+-	const list = player.storage.yomi_ba_temp_hujia || [];
+-	if (!list.length) {
+-		delete player.storage.yomi_ba_temp_hujia;
+-		player.removeSkill("yomi_ba_temp_hujia");
+-		return;
+-	}
+-	player.addSkill("yomi_ba_temp_hujia");
+-	player.markSkill("yomi_ba_temp_hujia");
+-}
+-
+-/** 获得 n 点临时护甲；expire 为清除时限键（"phaseBegin"＝自己下个回合开始；null＝只靠 key 清除） */
+-function gainTempHujia(player, num, expire, key) {
+-	if (!player.storage.yomi_ba_temp_hujia) player.storage.yomi_ba_temp_hujia = [];
+-	for (let i = 0; i < num; i++) player.storage.yomi_ba_temp_hujia.push({ key, expire });
+-	player.changeHujia(num);
+-	refreshTempHujia(player);
+-	game.log(player, "获得了", get.cnNumber(num), "点临时护甲");
+-}
+-
+-/** 按来源 key 清除（例如「掩体」下次发动时清掉上次给的） */
+-function clearTempHujiaByKey(player, key) {
+-	const list = player.storage.yomi_ba_temp_hujia || [];
+-	let n = 0;
+-	for (let i = list.length - 1; i >= 0; i--) {
+-		if (list[i].key === key) {
+-			list.splice(i, 1);
+-			n++;
+-		}
+-	}
+-	if (n) reduceTempHujia(player, n);
+-	refreshTempHujia(player);
+-}
+-
+-/** 到点清除 */
+-function expireTempHujia(player, expire) {
+-	const list = player.storage.yomi_ba_temp_hujia || [];
+-	let n = 0;
+-	for (let i = list.length - 1; i >= 0; i--) {
+-		if (list[i].expire === expire) {
+-			list.splice(i, 1);
+-			n++;
+-		}
+-	}
+-	if (n) reduceTempHujia(player, n);
+-	refreshTempHujia(player);
+-}
+-
+-/** 扣护甲但不触发「临」标记的连带扣除（用 locked 旗标防重入） */
+-function reduceTempHujia(player, n) {
+-	// ⚠️ 不能用 storage 旗标：changeHujia 只把事件推进队列，真正执行在下一个 tick，
+-	//   旗标会在同一个同步块里就被删掉 → 到期清除会被误当成"被伤害消耗"而重复扣条目。
+-	//   正确做法：标记挂在**事件对象**上，随事件一起排队。
+-	const ev = player.changeHujia(-n);
+-	ev.yomi_ba_temp_removing = true;
+-}
+-/** 清掉「终射第 3 次」的翻倍状态（旗标 + 载体）：所有分支（含提前 return）都必须调用 */
+-function clearZhongsheDouble(player) {
+-	delete player.storage.yomi_ba_zhongshe_third;
+-	player.removeSkill("yomi_ba_zhongshe_double");
+-}
+-
+-// ================================================================
+-// 周备：你造成的火焰伤害翻倍 + 数值锁定（第三方增/减无效，只有"取消"能影响）
+-//   · damageBegin3（增益结算完、且 awaited）：先加后乘 → 翻倍并记下锁定值
+-//   · damageBegin4（伤害真正打出前最后一步）：把数值拉回锁定值（除非这次伤害被 cancel）
+-//   · 幂等：同一伤害事件只翻一次（主技能与载体都挂此函数，互为双保险）
+-// ================================================================
+-function zhoubeiDamage(step, trigger, player) {
+-	// step 来自 event.triggername（"damageBegin3" / "damageBegin4"）——
+-	//   ⚠️ 不能看 trigger.name：damage 类触发传进来的是**伤害事件本身**，其 name 恒为 "damage"，
+-	//   这正是之前「周备不翻倍」的真因（代码永远走了 damageBegin4 分支）。
+-	//   语义（2026-10-05 用户选定 A 案）：翻倍后的数值**不再被任何后续效果修改**（第三方加/减都无效）。
+-	if (step === "damageBegin3") {
+-		if (trigger.yomi_ba_zhoubei_doubled) return;
+-		trigger.yomi_ba_zhoubei_doubled = true;
+-		trigger.num *= 2;
+-		trigger.set("yomi_ba_zhoubei_lock", trigger.num);
+-		return;
+-	}
+-	if (trigger._cancelled || trigger.cancelled) return;
+-	const lock = trigger.yomi_ba_zhoubei_lock;
+-	if (typeof lock === "number" && lock > 0) trigger.num = lock;
+-}
+-
+-// ================================================================
+-// 每位武将的专属受伤 / 回复配音（**数据驱动**：条数由 audio/ 下实际存在的文件决定）
+-//   · hurt   ：受到伤害 / 失去体力 → 只出声、无台词（纯音效）
+-//   · recover：回复体力 → 出声 + 弹出与该音频一一对应的台词气泡
+-//   · 文件命名：audio/skill/<武将id>_hurt<序号>.<ext> / _recover<序号>.<ext>
+-//   · 生成方式：tools/voice_auto_import.py 按 VoiceLines 目录结构导入
+-// ================================================================
+-const VOICE_TABLE = {
+-	yomi_ba_azusa: { hurt: 3, recover: 2, ext: "ogg" },
+-	yomi_ba_azusa_swim: { hurt: 3, recover: 2, ext: "ogg" },
+-	yomi_ba_hina: { hurt: 3, recover: 2, ext: "ogg" },
+-	yomi_ba_hina_dress: { hurt: 2, recover: 2, ext: "ogg" },
+-	yomi_ba_hina_swim: { hurt: 3, recover: 2, ext: "ogg" },
+-	yomi_ba_hoshino: { hurt: 2, recover: 2, ext: "ogg" },
+-	yomi_ba_hoshino_atk: { hurt: 2, recover: 2, ext: "ogg" },
+-	yomi_ba_hoshino_def: { hurt: 3, recover: 2, ext: "ogg" },
+-	yomi_ba_hoshino_swim: { hurt: 2, recover: 2, ext: "ogg" },
+-};
+-
+-for (const cid of Object.keys(VOICE_TABLE)) {
+-	const v = VOICE_TABLE[cid];
+-	if (v.hurt) {
+-		skills[`${cid}_hurt`] = {
+-			charlotte: true,
+-			silent: true,
+-			forced: true,
+-			popup: false,
+-			nopop: true,
+-			sub: true,
+-			audio: `${v.hurt}:${v.ext}`,
+-			audioNoText: true, // 自检工具用：只出声、不显示台词
+-			trigger: { player: ["damageEnd", "loseHpEnd"] },
+-			async content(event, trigger, player) {
+-				// 节流：压射会把一次伤害拆成多次 1 点 → 避免受伤语音叠播（复查 low 项）
+-				// 节流改用时间戳：无定时器、存档/联机后自动过期（setTimeout 一旦丢失会永久静音）
+-				const _cd = `${cid}_hurt_at`;
+-				const _now = Date.now();
+-				if (_now - (player.storage[_cd] || 0) < 800) return;
+-				player.storage[_cd] = _now;
+-				game.trySkillAudio(`${cid}_hurt`, player, true, true);
+-			},
+-		};
+-	}
+-	if (v.recover) {
+-		skills[`${cid}_recover`] = {
+-			charlotte: true,
+-			silent: true,
+-			forced: true,
+-			popup: false,
+-			nopop: true,
+-			sub: true,
+-			audio: `${v.recover}:${v.ext}`,
+-			trigger: { player: "recoverEnd" },
+-			async content(event, trigger, player) {
+-				// 音频与台词一一对应：先定随机序号，再用同序号的文本
+-				const idx = Array.from({ length: v.recover }, (_, i) => i + 1).randomGet();
+-				if (lib.config.background_speak) {
+-					game.playAudio("skill", `${cid}_recover${idx}.${v.ext}`);
+-				}
+-				const text = lib.translate[`#${cid}_recover${idx}`];
+-				if (text) player.say(text);
+-			},
+-		};
+-	}
+-}
+-
+-
+-// ================================================================
+-// 技能语音：按实际存在的音频文件补 audio 字段
+-//   （引擎里不写 audio 就完全不播 —— 复查 high 项）
+-//   · 冲浪：不能显式写 silent（见上），引擎护栏补的 silent 不会关 popup，故可自动播
+-//   · 压射：纯容器技能无触发时机，语音在 yomi_ba_yashe_guard 里手动播
+-//   · 终射：语音在其 content 里按「第几次发动」手动播，这里必须跳过（否则双播）
+-// ================================================================
+-const SKILL_VOICE = {
+-	chonglang: 2, huandan: 2, huban: 2, jiangfang: 2, jishe: 2, kaimu: 6, pojia: 2, pojia2: 2,
+-	sushe: 2, xuanyun: 2, yanti: 2, zhongmu: 2, zhongmu2: 2, zuandan: 3, zuandan2: 3,
+-};
+-for (const key of Object.keys(SKILL_VOICE)) {
+-	const skill = skills[`yomi_ba_${key}`];
+-	if (skill) skill.audio = `${SKILL_VOICE[key]}:ogg`;
+-}
+-
+-
+-// ================================================================
+-// 批次 02（2026-10-06）：12 武将 / 35 技能 + 内部载体
+-//   卡面转录与设计确认见工作区 `武将批次_02.md`（用户 2026-10-06 逐条拍板）
+-//   · 同名同效果 → 工厂加后缀：支援 ×3（makeZhiyuan）、前排 复用 makeQianpai
+-//   · 同名不同效果 → 独立实现：充能 / 光炮 / 换弹 / 暴击 / 补水 / 破甲
+-//   · 「独立乘区」类伤害（新星）＝ damageBegin3 先加后乘、damageBegin4 锁值（同周备）
+-//   · 「需要 N 张闪」＝ customArgs[目标id].shanRequired（本体【无双】的做法）
+-// ================================================================
+-
+-/** 是否为「伤害牌」（引擎原生判断；自制伤害牌已补 ai.tag.damage） */
+-function isDamageCard(card) {
+-	return !!get.is.damageCard(card);
+-}
+-
+-/** 伤害事件对应的 useCard 事件（没有则 null） */
+-function parentUseCard(event) {
+-	return event.getParent("useCard") || null;
+-}
+-
+-/** 伤害是否来自「仅指定一名角色为目标」的伤害牌 */
+-function fromSingleTargetCard(event) {
+-	const evt = parentUseCard(event);
+-	return !!evt && (evt.targets || []).length === 1;
+-}
+-
+-/** 向上找最近一个带 targets 的祖先事件（用于判断「多目标效果」） */
+-function nearestTargetsEvent(event) {
+-	let evt = event.getParent();
+-	for (let i = 0; i < 6 && evt; i++) {
+-		if (evt.targets) return evt;
+-		evt = evt.getParent();
+-	}
+-	return null;
+-}
+-
++import { lib, game, ui, get, ai, _status } from "noname";
++
++/**
++ * 自制武将包「BA」（包名 yomi_char_ba）—— 技能实现
++ *
++ * ============================================================
++ * 【本包最大特点：同一技能名会在很多武将身上重复出现】
++ * ============================================================
++ * 用户要求（2026-10-05）：
++ *   1. 同名 + 同效果 的技能，**游戏内显示（技能名 / 描述）与效果处理完全一致**；
++ *   2. 但代码层面必须**逐武将区分**：首次出现用 `yomi_ba_xxx`，第二个武将开始
++ *      依次加后缀 `2`、`3`、`4`……（如 `yomi_ba_qianpai` / `yomi_ba_qianpai2` / …），
++ *      这样日后想单独调整某个武将不会牵连其他武将；
++ *   3. 同名但**不同效果**的技能，同样用独立 id 区分，并在 `名称登记表.md` 里注明差异。
++ *
++ * 实现方式（重要）：同名技能一律走**工厂函数**，例如 `makeQianpai("yomi_ba_qianpai2")`。
++ *   工厂每次都返回**全新对象**（引擎载入技能时会往 info 上写 `_priority` 等字段，
++ *   共用同一个对象会互相污染），因此「显示一致、实现独立」两不误。
++ *   子技能 id 由主 id 派生（`<主id>_force` / `<主id>_ban` / `<主id>_heal`），天然跟着后缀走。
++ *
++ * ============================================================
++ * 通用约定（与其它自制包一致）
++ * ============================================================
++ * 1. 一切自定义命名实体加 `yomi_` 前缀（技能 id / 子技能 id / 标记名 / storage 键）。
++ * 2. 每个技能（含 sub 子技能）都要在 translate.js 里给中文名，否则弹窗显示英文 id。
++ * 3. 必发 / 锁定 / 载体技能一律 `forced: true` + `silent: true`（引擎对 yomi_ 前缀 + trigger + forced
++ *    的技能会自动补 silent，显式写是双保险）；「可以选择」的技能**绝不能**写 silent。
++ * 4. 判断 useCard 的牌不要用 `get.itemtype(card) === "card"`，直接用 `get.name/get.tag/get.nature`。
++ * 5. 跨回合窗口用 `player.storage.X = player.phaseNumber`，filter 里判 `===`。
++ */
++
++/** @type { importCharacterConfig["skill"] } */
++const skills = {
++	// ================================================================
++	// 技能工厂们（同名技能重复出现时调用，返回「全新」的技能表片段）
++	// ================================================================
++
++	...makeQianpai("yomi_ba_qianpai"),
++	...makeTuijin("yomi_ba_tuijin"),
++	...makeHuanjiu("yomi_ba_huanjiu"),
++
++	// ================================================================
++	// 批次 01（2026-10-05）—— 8 个新武将
++	//   同名技能：前排/后排走工厂加后缀；破甲/钻弹/终幕同名不同效果各写一份
++	// ================================================================
++	...makeQianpai("yomi_ba_qianpai2"), // 星野（临战）防御
++	...makeHoupai("yomi_ba_houpai"), // 日奈（礼服）
++	...makeHoupai("yomi_ba_houpai2"), // 日奈（泳装）
++	...makeHoupai("yomi_ba_houpai3"), // 日奈
++	...makeChonglang("yomi_ba_chonglang"), // 星野（泳装）
++	...makeYanti("yomi_ba_yanti"), // 星野（防御）掩体
++	...makeYashe("yomi_ba_yashe"), // 星野（攻击）压射
++
++	// —— 临时护甲（「临」标记）系统载体：用户 2026-10-05 设计 ——
++	yomi_ba_temp_hujia: {
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		marktext: "临",
++		intro: {
++			name: "临",
++			content(storage, player) {
++				return `临时护甲 ${(player.storage.yomi_ba_temp_hujia || []).length} 点`;
++			},
++		},
++		// 护甲减少 → 同步扣除等量的「临」（先进先出）
++		trigger: { player: "changeHujiaAfter" },
++		filter(event) {
++			return event.num < 0 && !event.yomi_ba_temp_removing;
++		},
++		async content(event, trigger, player) {
++			const list = player.storage.yomi_ba_temp_hujia || [];
++			list.splice(0, Math.min(-trigger.num, list.length));
++			refreshTempHujia(player);
++		},
++		group: ["yomi_ba_temp_hujia_expire"],
++	},
++	// 到点清除：每个「临」都记着它被生成时技能规定的清除时限
++	yomi_ba_temp_hujia_expire: {
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		trigger: { player: "phaseBegin" },
++		filter(event, player) {
++			return (player.storage.yomi_ba_temp_hujia || []).some(i => i.expire === "phaseBegin");
++		},
++		async content(event, trigger, player) {
++			expireTempHujia(player, "phaseBegin");
++		},
++	},
++
++	// —— 星野（泳装）：衍生技 ——
++	yomi_ba_huixue: {
++		forced: true,
++		locked: true,
++		sub: true,
++		charlotte: true,
++		trigger: { player: "phaseJieshuBegin" },
++		async content(event, trigger, player) {
++			await player.recover(1);
++		},
++	},
++	yomi_ba_hongke: {
++		forced: true,
++		locked: true,
++		sub: true,
++		charlotte: true,
++		trigger: { player: "changeSkillsAfter" },
++		filter(event, player) {
++			return !player.storage.yomi_ba_hongke_done;
++		},
++		async content(event, trigger, player) {
++			player.storage.yomi_ba_hongke_done = true;
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "红克：指定至多三名角色，其造成的超过一点的火焰伤害翻倍",
++					selectTarget: [0, 3],
++					ai: aiAlly(player), // 增益：优先自己与队友
++				})
++				.forResult();
++			for (const target of targets || []) {
++				target.addSkill("yomi_ba_hongke_buff");
++				// ★ 记录来源：同名 buff 是**公共技能**，两个「星野（泳装）」可能给同一目标上 buff，
++				//   不分来源地 removeSkill 会把别人的一起摘掉（子代理复核 low 项）
++				if (!target.storage.yomi_ba_hongke_sources) target.storage.yomi_ba_hongke_sources = [];
++				target.storage.yomi_ba_hongke_sources.add(player);
++				if (!player.storage.yomi_ba_hongke_targets) player.storage.yomi_ba_hongke_targets = [];
++				player.storage.yomi_ba_hongke_targets.push(target);
++			}
++		},
++		onremove(player) {
++			for (const target of player.storage.yomi_ba_hongke_targets || []) {
++				// 只摘「自己这一份」：其它来源还在就没收 buff
++				if (target.storage.yomi_ba_hongke_sources) target.storage.yomi_ba_hongke_sources.remove(player);
++				if (!(target.storage.yomi_ba_hongke_sources || []).length) {
++					delete target.storage.yomi_ba_hongke_sources;
++					target.removeSkill("yomi_ba_hongke_buff");
++				}
++			}
++			delete player.storage.yomi_ba_hongke_targets;
++			delete player.storage.yomi_ba_hongke_done;
++		},
++	},
++	yomi_ba_jiagong: {
++		forced: true,
++		locked: true,
++		sub: true,
++		charlotte: true,
++		trigger: { player: "changeSkillsAfter" },
++		filter(event, player) {
++			return !player.storage.yomi_ba_jiagong_done;
++		},
++		async content(event, trigger, player) {
++			player.storage.yomi_ba_jiagong_done = true;
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "加攻：指定至多三名角色，其使用的伤害牌伤害+1",
++					selectTarget: [0, 3],
++					ai: aiAlly(player), // 增益：优先自己与队友
++				})
++				.forResult();
++			for (const target of targets || []) {
++				target.addSkill("yomi_ba_jiagong_buff");
++				if (!target.storage.yomi_ba_jiagong_sources) target.storage.yomi_ba_jiagong_sources = [];
++				target.storage.yomi_ba_jiagong_sources.add(player);
++				if (!player.storage.yomi_ba_jiagong_targets) player.storage.yomi_ba_jiagong_targets = [];
++				player.storage.yomi_ba_jiagong_targets.push(target);
++			}
++		},
++		onremove(player) {
++			for (const target of player.storage.yomi_ba_jiagong_targets || []) {
++				if (target.storage.yomi_ba_jiagong_sources) target.storage.yomi_ba_jiagong_sources.remove(player);
++				if (!(target.storage.yomi_ba_jiagong_sources || []).length) {
++					delete target.storage.yomi_ba_jiagong_sources;
++					target.removeSkill("yomi_ba_jiagong_buff");
++				}
++			}
++			delete player.storage.yomi_ba_jiagong_targets;
++			delete player.storage.yomi_ba_jiagong_done;
++		},
++	},
++	yomi_ba_hongke_buff: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		trigger: { source: "damageBegin3" },
++		filter(event, player) {
++			// 来源全部阵亡后失效（死亡不会触发 onremove，这里按存活来源判断，子代理复核 medium 项）
++			if (!(player.storage.yomi_ba_hongke_sources || []).some(s => s.isAlive())) return false;
++			return event.nature === "fire" && event.num > 1;
++		},
++		async content(event, trigger, player) {
++			trigger.num *= 2;
++		},
++	},
++	yomi_ba_jiagong_buff: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		trigger: { source: "damageBegin1" },
++		filter(event, player) {
++			if (!(player.storage.yomi_ba_jiagong_sources || []).some(s => s.isAlive())) return false;
++			return event.card && get.tag(event.card, "damage");
++		},
++		async content(event, trigger, player) {
++			trigger.num += 1;
++		},
++	},
++
++	// —— 星野（临战）攻击 ——
++	yomi_ba_yuanshe: {
++		forced: true,
++		locked: true,
++		// 锁定技：其它角色计算与你间距离时+1（本体「飞影」feiying 同款 mod）
++		mod: {
++			globalTo(from, to, distance) {
++				return distance + 1;
++			},
++		},
++		group: ["yomi_ba_yuanshe_reduce"],
++	},
++	yomi_ba_yuanshe_reduce: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		trigger: { player: "damageBegin3" },
++		filter(event, player) {
++			return event.source && event.source !== player && !event.source.inRange(player);
++		},
++		async content(event, trigger, player) {
++			trigger.num--;
++		},
++	},
++	yomi_ba_sushe: {
++		trigger: { player: "useCardAfter" },
++		filter(event, player) {
++			return get.name(event.card) === "sha" && event.targets && event.targets.length;
++		},
++		// ★ AI：手里还有【杀】就别发动 —— 展示手牌等于把信息白给对手，而且本来就没有额外收益
++		check(event, player) {
++			return !player.countCards("h", c => get.name(c) === "sha");
++		},
++		async content(event, trigger, player) {
++			const target = trigger.targets[0];
++			await player.showHandcards("速射");
++			if (player.countCards("h", card => get.name(card) === "sha")) return;
++			await target.damage(1, player);
++			await player.draw(1);
++		},
++	},
++	yomi_ba_jishe: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 3,
++		filter(event, player) {
++			return player.countCards("he") >= 3;
++		},
++		prompt: "弃置三张牌，对一名其它角色及其相邻角色中的任意名各使用一张【杀】",
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "集射：选择一名其它角色",
++					filterTarget: lib.filter.notMe,
++					selectTarget: 1,
++					ai: aiEnemy(player), // 伤害技能：优先打敌人
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			const center = targets[0];
++			const list = [center.previous, center, center.next].filter(i => i && i !== player);
++			const choose = await player
++				.chooseTarget({
++					prompt: "集射：选择要使用【杀】的目标",
++					filterTarget(card, p, t) {
++						return list.includes(t);
++					},
++					selectTarget: [1, list.length],
++					forced: true,
++					ai: aiEnemy(player), // 伤害技能：优先打敌人（否则默认按好感度会先打队友）
++				})
++				.forResult();
++			for (const target of choose.targets || []) {
++				await player.useCard({ name: "sha" }, target).set("addCount", false);
++			}
++		},
++		ai: { order: 1, result: { player: 1 } },
++	},
++
++	// —— 星野（临战）防御：掩体 / 护板 / 降防 ——
++	yomi_ba_huban: {
++		forced: true,
++		locked: true,
++		trigger: { player: "phaseJieshuBegin" },
++		async content(event, trigger, player) {
++			gainTempHujia(player, 1, "phaseBegin", "yomi_ba_huban");
++		},
++	},
++	yomi_ba_jiangfang: {
++		trigger: { source: "damageBegin3" },
++		filter(event, player) {
++			if (get.name(event.card) !== "sha" || !event.player) return false;
++			// 「本技能不可与自己叠加」：目标身上已经有本技能给的标记时不再询问
++			return !event.player.hasSkill("yomi_ba_jiangfang_buff");
++		},
++		// ★ AI：默认发动没问题，但**只对非队友**（负面标记）
++		check(event, player) {
++			const target = event.player;
++			return !!target && (target === player || get.attitude(player, target) < 0);
++		},
++		async content(event, trigger, player) {
++			const target = trigger.player;
++			await target.addSkill("yomi_ba_jiangfang_buff");
++			if (!player.storage.yomi_ba_jiangfang_list) player.storage.yomi_ba_jiangfang_list = [];
++			player.storage.yomi_ba_jiangfang_list.push(target);
++		},
++		group: ["yomi_ba_jiangfang_clear"],
++	},
++	yomi_ba_jiangfang_buff: {
++		sub: true,
++		mark: true,
++		intro: {
++			name: "降防",
++			content: "直到对方的回合开始前，你受到【杀】的伤害+1。",
++		},
++		trigger: { player: "damageBegin3" },
++		filter(event, player) {
++			return get.name(event.card) === "sha";
++		},
++		async content(event, trigger, player) {
++			trigger.num++;
++		},
++	},
++	yomi_ba_jiangfang_clear: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		trigger: { player: "phaseBegin" },
++		filter(event, player) {
++			return (player.storage.yomi_ba_jiangfang_list || []).length > 0;
++		},
++		async content(event, trigger, player) {
++			for (const target of player.storage.yomi_ba_jiangfang_list) target.removeSkill("yomi_ba_jiangfang_buff");
++			player.storage.yomi_ba_jiangfang_list = [];
++		},
++	},
++
++	// —— 梓 / 梓（泳装）——
++	yomi_ba_pojia: {
++		trigger: { player: "phaseZhunbeiBegin" },
++		filter(event, player) {
++			return game.hasPlayer(current => current !== player);
++		},
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "破甲：选择一名其它角色，令其受到的下一次伤害+1",
++					filterTarget: lib.filter.notMe,
++					selectTarget: 1,
++					ai(target) {
++						if (target === player) return -1;
++						const base = 1 - get.attitude(player, target); // 越敌对越高
++						// ★ 反贼视角（2026-10-05 用户指定）：优先把"下一次伤害+1"给主公（加速击杀）；
++						//   但主公**太健康**（比血最少的忠臣还高出 2 点以上）时，改给忠臣削主公羽翼。
++						if (player.identity === "fan" && target.identity === "zhu") return base + 4;
++						if (player.identity === "fan" && target.identity === "zhong") {
++							const zhu = game.findPlayer(p => p.identity === "zhu");
++							const zhong = game.filterPlayer(p => p.identity === "zhong");
++							const lowest = zhong.length ? Math.min(...zhong.map(p => p.hp)) : -99;
++							if (zhu && lowest > -99 && zhu.hp >= lowest + 2) return base + 3;
++						}
++						return base;
++					}, // 负面标记：只给敌人
++				})
++				.forResult();
++			if (targets && targets.length) await targets[0].addSkill("yomi_ba_pojia_buff");
++		},
++	},
++	yomi_ba_pojia2: {
++		// ⚠️ 必须是 damageAfter（伤害结算**之后**）而不是 damageBegin1：
++		//   若在伤害前判定，判出来的"下一次伤害+1"会立刻作用在**正在结算的这次伤害**上
++		//   （实机 2026-10-05：一判定成功就当次伤害立刻 +1，与设计"下一次"不符）
++		trigger: { source: "damageAfter" },
++		filter(event, player) {
++			// 卡面：你的回合中，你对其它角色造成伤害时 —— 且要真的造成了伤害
++			return _status.currentPhase === player && event.player && event.player !== player && event.num > 0;
++		},
++		async content(event, trigger, player) {
++			const judge = await player.judge(card => (get.suit(card) === "club" ? 1 : 0)).forResult();
++			if (judge.bool) await trigger.player.addSkill("yomi_ba_pojia_buff");
++		},
++	},
++	yomi_ba_pojia_buff: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		trigger: { player: "damageBegin3" },
++		async content(event, trigger, player) {
++			trigger.num++;
++			player.removeSkill("yomi_ba_pojia_buff");
++		},
++	},
++	yomi_ba_zuandan: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 2,
++		filter(event, player) {
++			return player.countCards("he") >= 2 && game.hasPlayer(current => current !== player);
++		},
++		prompt: "弃置两张牌，对一名其它角色依次使用两张不计入次数的【杀】",
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "钻弹：选择目标",
++					filterTarget: lib.filter.notMe,
++					selectTarget: 1,
++					ai: aiEnemy(player), // 伤害技能：优先打敌人
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			for (let i = 0; i < 2; i++) await player.useCard({ name: "sha" }, targets[0]).set("addCount", false);
++		},
++		ai: { order: 1, result: { player: 1 } },
++	},
++	yomi_ba_zuandan2: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 2,
++		filter(event, player) {
++			return player.countCards("he") >= 2 && game.hasPlayer(current => current !== player);
++		},
++		prompt: "弃置两张牌，对一名其它角色使用一张不计入次数的【杀】，其获得「寒」标记",
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "钻弹：选择目标",
++					filterTarget: lib.filter.notMe,
++					selectTarget: 1,
++					// ★「寒」是负面标记 → AI 不该给队友挂
++					ai(target) {
++						if (target === player) return 0;
++						return 1 - get.attitude(player, target);
++					},
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			const target = targets[0];
++			// ⚠️ 目标可能被别的技能改写（如星野【前排】把单目标【杀】改成"以星野为唯一目标"），
++			//   所以「寒」必须挂给**实际被打到的人**，而不是玩家最初选的那个人（2026-10-06 实机 BUG）。
++			const evt = player.useCard({ name: "sha" }, target).set("addCount", false);
++			await evt;
++			let victims = (evt.targets || []).filter(t => t !== player && t.isAlive());
++			if (!victims.length) victims = [target];
++			for (const victim of victims) {
++				// 「寒」标记上限为一个
++				if (victim.hasSkill("yomi_ba_han_buff")) continue;
++				victim.addSkill("yomi_ba_han_buff");
++				victim.storage.yomi_ba_han_count = 0;
++				victim.markSkill("yomi_ba_han_buff");
++				game.log(victim, "获得了「寒」标记");
++			}
++		},
++		ai: { order: 1, result: { player: 1 } },
++	},
++	yomi_ba_han_buff: {
++		sub: true,
++		marktext: "寒",
++		intro: {
++			name: "寒",
++			content(storage, player) {
++				return `已判定 ${player.storage.yomi_ba_han_count || 0}/4 次`;
++			},
++		},
++		trigger: { player: "phaseJieshuBegin" },
++		forced: true,
++		async content(event, trigger, player) {
++			player.storage.yomi_ba_han_count = (player.storage.yomi_ba_han_count || 0) + 1;
++			const judge = await player.judge(card => (get.color(card) === "black" ? 1 : 0)).forResult();
++			if (judge.bool) await player.damage(1);
++			if (player.storage.yomi_ba_han_count >= 4) {
++				delete player.storage.yomi_ba_han_count; // removeSkill 已内部 unmarkSkill，无需再手动取消
++				player.removeSkill("yomi_ba_han_buff");
++			} else {
++				player.markSkill("yomi_ba_han_buff");
++			}
++		},
++	},
++
++	// —— 日奈（礼服）：周备 / 开幕 / 终射 ——
++	// 周备：锁定技，你造成的火焰伤害翻倍，其数值不受你与目标以外效果的影响
++	//   双保险：主技能与载体都挂 source: damageBegin3/4（幂等，只翻一次），避免单条路径没注册而失效
++	yomi_ba_zhoubei: {
++		forced: true,
++		locked: true,
++		// 载体（本包同款写法）：与主技能一起挂 damageBegin3/4，幂等函数保证只翻一次
++		group: ["yomi_ba_zhoubei_lock"],
++		trigger: { source: ["damageBegin3", "damageBegin4"] },
++		filter(event, player) {
++			return event.nature === "fire";
++		},
++		async content(event, trigger, player) {
++			// ⚠️ 判断「哪一步」必须用 event.triggername：damage 类触发的 trigger.name 恒为 "damage"
++			zhoubeiDamage(event.triggername, trigger, player);
++		},
++	},
++	yomi_ba_zhoubei_lock: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		trigger: { source: ["damageBegin3", "damageBegin4"] },
++		filter(event, player) {
++			return event.nature === "fire";
++		},
++		async content(event, trigger, player) {
++			zhoubeiDamage(event.triggername, trigger, player);
++		},
++	},
++	yomi_ba_kaimu: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 3,
++		filter(event, player) {
++			return player.countCards("he") >= 3;
++		},
++		prompt: "弃置三张牌，直到本阶段结束获得「终射」并进入集中状态",
++		derivation: ["yomi_ba_zhongshe", "yomi_ba_jizhong"],
++		async content(event, trigger, player) {
++			// ⚠️ 必须先把「终射」的全部运行时状态清干净：终射是临时技能，
++			//   上一阶段结束时技能被摘掉，但它留在 player.storage 上的 lock / lock_at / count / third / pending
++			//   不会自动清 —— 尤其 lock_at 记的是**上一回合**的已用牌数，新回合 getHistory 归零后
++			//   自愈解锁永远不成立，于是再次开幕也不会再给终射（2026-10-05 用户实机踩到）。
++			delete player.storage.yomi_ba_zhongshe_lock;
++			delete player.storage.yomi_ba_zhongshe_lock_at;
++			delete player.storage.yomi_ba_zhongshe_own;
++			delete player.storage.yomi_ba_zhongshe_third;
++			delete player.storage.yomi_ba_zhongshe_pending;
++			player.storage.yomi_ba_zhongshe_count = 0;
++			player.addTempSkill("yomi_ba_zhongshe", { player: ["phaseUseEnd", "phaseAfter"] });
++			player.addTempSkill("yomi_ba_jizhong", { player: ["phaseUseEnd", "phaseAfter"] });
++		},
++			ai: {
++				// 手牌越多越值得（弃 3 张 → 最多 3 张伤害翻倍的火杀 + 溅射）：≥5 张时高优先
++				order(card, player) {
++					if (!player) return 1;
++					const n = player.countCards("h");
++					return n >= 5 ? 8 : n >= 4 ? 3 : 0;
++				},
++				result: () => ({ player: 1 }),
++			},
++	},
++	yomi_ba_jizhong: {
++		sub: true,
++		mark: true,
++		intro: { name: "集中", content: "你处于集中状态：不受嘲讽类效果影响。" },
++	},
++	yomi_ba_zhongshe: {
++		enable: "phaseUse",
++		derivation: [],
++		filter(event, player) {
++			if (player.storage.yomi_ba_zhongshe_lock) {
++				// ★ 自愈解锁：发动终射后只要**再使用过任意一张牌**（含装备）即可再次发动。
++				//   不依赖 useCardAfter 钩子是否生效 —— 用「本回合已使用牌数」直接比大小。
++				//   lock_at 记的是「发动那一刻的已用牌数 + 1」（+1 ＝下面那张火杀自己），
++				//   所以火杀本身不算「使用牌后」，必须**额外**再用一张牌才解锁。
++				const count = player.getHistory("useCard").length;
++				if (count > (player.storage.yomi_ba_zhongshe_lock_at || 0)) {
++					delete player.storage.yomi_ba_zhongshe_lock;
++					delete player.storage.yomi_ba_zhongshe_own;
++				}
++			}
++			return (player.storage.yomi_ba_zhongshe_count || 0) < 3 && !player.storage.yomi_ba_zhongshe_lock && game.hasPlayer(c => c !== player);
++		},
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "终射：选择一名其它角色",
++					filterTarget: lib.filter.notMe,
++					selectTarget: 1,
++					ai: aiEnemy(player), // 伤害技能：优先打敌人
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			// ⚠️ 次数必须在**确认目标之后**才 +1：否则玩家取消会白烧一次（第 3 次取消更会导致本阶段再也发不出）
++			player.storage.yomi_ba_zhongshe_count = (player.storage.yomi_ba_zhongshe_count || 0) + 1;
++			const third = player.storage.yomi_ba_zhongshe_count === 3;
++			const target = targets[0];
++			player.storage.yomi_ba_zhongshe_lock = true; // 使用牌后才可再次发动
++			// 记下「已用牌数 + 1」（+1 是下面那张火杀自己）→ 之后 filter 用它可以自愈解锁
++			player.storage.yomi_ba_zhongshe_lock_at = player.getHistory("useCard").length + 1;
++			player.storage.yomi_ba_zhongshe_own = true; // 下一次 useCardAfter 是自己这张火杀，不算「使用牌后」
++			player.addTempSkill("yomi_ba_zhongshe_watch", { player: ["phaseUseEnd", "phaseAfter"] });
++			// 第三次发动：本阶段内造成的所有伤害翻倍
++			// ★ 终射语音（用户 2026-10-05 设定）：第 3 次发动播「（3）」那一组，否则播普通组
++			//   导入时普通音频排在 1~3，带（3）的排在 4~6（见 tools/voice_auto_import.py）
++			{
++				const base = third ? 4 : 1;
++				const idx = [base, base + 1, base + 2].randomGet();
++				if (lib.config.background_speak) game.playAudio("skill", `yomi_ba_zhongshe${idx}.ogg`);
++				const text = lib.translate[`#yomi_ba_zhongshe${idx}`];
++				if (text) player.say(text);
++			}
++			if (third) {
++				// 第三次发动：本次火杀造成的一切伤害翻倍（载体 filter 读的就是这个键）
++				player.storage.yomi_ba_zhongshe_third = true;
++				player.addTempSkill("yomi_ba_zhongshe_double", { player: ["phaseUseEnd", "phaseAfter"] });
++			}
++			player.storage.yomi_ba_zhongshe_pending = { target, third };
++			await player.useCard({ name: "sha", nature: "fire" }, target).set("addCount", false);
++		},
++		ai: { order: 1, result: { player: 1 } },
++	},
++	yomi_ba_zhongshe_watch: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		// ⚠️ damageAfter 必须用 **source** 角色（本体同理，见 character/diy/skill.js:9020）：
++		//   用 player 的话只会捕获「自己受到伤害」，根本等不到自己造成的伤害 → 判定/邻家伤害永远不触发。
++		trigger: { player: "useCardAfter", source: "damageAfter" },
++		filter(event, player, triggername) {
++			// ⚠️ 触发技 filter 第一参是「被触发的事件」（没有 triggername 字段），触发名在**第三参**
++			//   这里写错 → useCardAfter 分支从未生效（实机"终射不刷新"的元凶之一）
++			if (triggername === "useCardAfter") return true;
++			return !!player.storage.yomi_ba_zhongshe_pending;
++		},
++		async content(event, trigger, player) {
++			if (event.triggername === "useCardAfter") {
++				if (player.storage.yomi_ba_zhongshe_own) {
++					// 自己这张火杀结算完：它不算「使用牌后」，但要作废挂起（避免判定延后到下一次伤害）
++					delete player.storage.yomi_ba_zhongshe_own;
++				} else if (trigger.player === player) {
++					// 真正又使用了一张牌 → 刷新，允许再次发动
++					delete player.storage.yomi_ba_zhongshe_lock;
++				}
++				delete player.storage.yomi_ba_zhongshe_pending;
++				delete player.storage.yomi_ba_zhongshe_third; // 翻倍只作用于本次火杀
++				return;
++			}
++			const pending = player.storage.yomi_ba_zhongshe_pending;
++			// 只认「那一张火杀」造成的、且真的造成了（num>0）的伤害
++			if (!pending) {
++				// 窗口内没有「那张火杀」的伤害（如被闪）→ 清旗兜底，避免翻倍载体残留到本阶段其它伤害上
++				delete player.storage.yomi_ba_zhongshe_third;
++				player.removeSkill("yomi_ba_zhongshe_double");
++				return;
++			}
++			if (trigger.source !== player) return;
++			if (!trigger.card || get.name(trigger.card) !== "sha") return;
++			if (!(trigger.num > 0)) return;
++			delete player.storage.yomi_ba_zhongshe_pending;
++			// ★ 以**实际受伤者**为基准（目标可能被【前排】之类的技能改写，2026-10-06）
++			const target = (trigger.player && trigger.player.isAlive() ? trigger.player : null) || pending.target;
++			const { bool } = await player
++				.chooseBool("终射：进行一次判定，若为红色，对目标的上家或下家造成0.5点火焰伤害？")
++				// ★ AI：上家与下家**都是队友**时不做这个判定（避免误伤）
++				.set("ai", () => {
++					const list = [target.previous, target.next].filter(i => i && i !== player);
++					if (!list.length) return false;
++					return list.some(i => get.attitude(player, i) < 0);
++				})
++				.forResult();
++			if (!bool) {
++				clearZhongsheDouble(player);
++				return;
++			}
++			const judge = await player.judge(card => (get.color(card) === "red" ? 1 : 0)).forResult();
++			if (!judge.bool) {
++				clearZhongsheDouble(player);
++				return;
++			}
++			const list = [target.previous, target.next].filter(i => i && i !== player);
++			if (!list.length) {
++				clearZhongsheDouble(player);
++				return;
++			}
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "终射：选择目标的上家或下家",
++					filterTarget(card, p, t) {
++						return list.includes(t);
++					},
++					selectTarget: 1,
++					forced: true,
++					ai: aiEnemy(player), // 溅射也优先打敌人
++				})
++				.forResult();
++			if (targets && targets.length) {
++				player.storage.yomi_ba_zhongshe_neighbor = true;
++				await targets[0].damage(0.5, player, "fire");
++				delete player.storage.yomi_ba_zhongshe_neighbor;
++			}
++			clearZhongsheDouble(player);
++		},
++	},
++	yomi_ba_xuanyun: {
++		round: 1,
++		trigger: { global: "phaseBegin" },
++		filter(event, player) {
++			return game.hasPlayer(current => current !== player);
++		},
++		// ★ AI：只有此刻确实存在敌人可指时才发动（否则选出 0 人＝白烧「每轮一次」）
++		check(event, player) {
++			return game.hasPlayer(t => t !== player && get.attitude(player, t) < 0);
++		},
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "眩晕：指定至多三名其它角色，其在本回合使用的第一张牌会被抵消",
++					filterTarget: lib.filter.notMe,
++					selectTarget: [0, 3],
++					// ★ 眩晕只给敌人，且威胁越大（手牌越多）越优先
++					ai(target) {
++						if (target === player) return -1;
++						if (get.attitude(player, target) >= 0) return -1;
++						return 1 + target.countCards("h") * 0.5;
++					},
++				})
++				.forResult();
++			for (const target of targets || []) {
++				target.addTempSkill("yomi_ba_xuanyun_buff", { global: "phaseAfter" });
++				target.storage.yomi_ba_xuanyun_used = false;
++				target.markSkill("yomi_ba_xuanyun_buff");
++			}
++		},
++	},
++	yomi_ba_xuanyun_buff: {
++		sub: true,
++		marktext: "眩",
++		intro: { name: "眩晕", content: "你本回合使用的第一张牌会被抵消。" },
++		trigger: { player: "useCard" },
++		forced: true,
++		silent: true,
++		firstDo: true,
++		filter(event, player) {
++			return !player.storage.yomi_ba_xuanyun_used;
++		},
++		async content(event, trigger, player) {
++			player.storage.yomi_ba_xuanyun_used = true;
++			trigger.neutralize();
++			game.log(player, "被【眩晕】抵消了", trigger.card);
++		},
++	},
++	yomi_ba_zhongmu: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 2,
++		filter(event, player) {
++			return player.countCards("he") >= 2;
++		},
++		prompt: "弃置两张牌，对至多三名与你距离2以内的角色各使用一张不计入次数的火【杀】",
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "终幕：选择至多三名与你距离2以内的角色",
++					filterTarget(card, p, t) {
++						return t !== p && get.distance(p, t) <= 2;
++					},
++					selectTarget: [1, 3],
++					forced: true,
++					ai: aiEnemy(player),
++				})
++				.forResult();
++			for (const target of targets || []) {
++				await player.useCard({ name: "sha", nature: "fire" }, target).set("addCount", false);
++			}
++		},
++		ai: {
++			// 距离 2 以内的残血敌人越多越值得
++			order(card, player) {
++				if (!player) return 1;
++				const weak = game
++					.filterPlayer(t => t !== player && get.attitude(player, t) < 0)
++					.filter(t => t.hp <= 2 && get.distance(player, t) <= 2).length;
++				return 1 + weak * 3;
++			},
++			result: () => ({ player: 1 }),
++		},
++	},
++	yomi_ba_huandan: {
++		round: 1,
++		trigger: { player: "useCardAfter" },
++		filter(event, player) {
++			return get.name(event.card) === "sha" && event.targets && event.targets.length;
++		},
++		// ★ AI：手里有【杀】就不发动，避免手牌信息泄露
++		check(event, player) {
++			return !player.countCards("h", c => get.name(c) === "sha");
++		},
++		async content(event, trigger, player) {
++			const target = trigger.targets[0];
++			await player.showHandcards("换弹");
++			if (player.countCards("h", card => get.name(card) === "sha")) return;
++			await player.draw(1);
++			player.storage.yomi_ba_huandan_target = target;
++			player.addSkill("yomi_ba_huandan_buff");
++		},
++	},
++	yomi_ba_zhongmu2: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 3,
++		filter(event, player) {
++			return player.countCards("he") >= 3;
++		},
++		prompt: "弃置三张牌，对一名或两名相邻的角色各依次使用两张不计入次数的火【杀】",
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "终幕：选择一名或两名相邻的角色",
++					filterTarget(card, p, t) {
++						return t !== p;
++					},
++					selectTarget: [1, 2],
++					forced: true,
++					ai: aiEnemy(player),
++				})
++				.forResult();
++			let list = targets || [];
++			if (list.length === 2 && list[0].next !== list[1] && list[0].previous !== list[1]) {
++				list.length = 1; // 两名必须相邻（环形相邻也算）→ 不相邻时只对第一位生效
++			}
++			for (const target of list) {
++				for (let i = 0; i < 2; i++) {
++					await player.useCard({ name: "sha", nature: "fire" }, target).set("addCount", false);
++				}
++			}
++		},
++		ai: {
++			// 衡量「弃 3 张牌」与「2 张火杀收益」：手上用不出去的牌（价值 ≤4）够 3 张才划算
++			order(card, player) {
++				if (!player) return 1;
++				const low = player.getCards("h").filter(c => (get.value(c, player) || 1) <= 4).length;
++				return low >= 3 ? 5 : 1;
++			},
++			result: () => ({ player: 1 }),
++		},
++	},
++	yomi_ba_huandan_buff: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		trigger: { source: "damageBegin1" },
++		filter(event, player) {
++			return player.storage.yomi_ba_huandan_target && event.player === player.storage.yomi_ba_huandan_target;
++		},
++		async content(event, trigger, player) {
++			trigger.num++;
++			delete player.storage.yomi_ba_huandan_target;
++			player.removeSkill("yomi_ba_huandan_buff");
++		},
++	},
++
++};
++
++/** 通用 AI：越敌对越优先（伤害/负面技能用；自己不给分） */
++function aiEnemy(player) {
++	return function (target) {
++		if (target === player) return -1;
++		return 1 - get.attitude(player, target);
++	};
++}
++
++/** 通用 AI：越友方越优先、**自己永远最高**（增益/回复类技能用） */
++function aiAlly(player) {
++	return function (target) {
++		if (target === player) return 4; // 比任何队友都高，保证 AI 先给自己
++		return 1 + get.attitude(player, target) / 2;
++	};
++}
++
++// ================================================================
++// 前排 —— 本包第一个「会重复出现很多次」的技能
++//   卡面：游戏开始时，你选择一名其它角色，只要你存活，其使用伤害牌时必须尽可能包括你为目标。
++//   实现要点：
++//     · 主技能在 gameStart（以及自己复活时）让玩家强制选一名其他角色，记入 `storage[<id>_target]`；
++//     · 载体子技能挂在**自己**身上做全局观察：被盯的人使用伤害牌、且你不在目标里、
++//       且你能被合法指定（含攻击范围）时，把你加进目标列表（`trigger.targets.add(player)`）。
++//       先例：character/jsrg/skill.js:186（`trigger.targets.add(player)` + `lib.filter.targetEnabled`）。
++//     · 「只要你存活」：载体只在自己身上，自己不存活就不会触发。
++// ================================================================
++function makeQianpai(id) {
++	const force = `${id}_force`;
++	return {
++		[id]: {
++			forced: true,
++			locked: true,
++			// 专属台词 2 条（.ogg）：#<技能id>1/2 ↔ audio/skill/<技能id>1|2.ogg
++			audio: "2:ogg",
++			// 【设计确认 2026-10-05】选择时机 = **开局（游戏开始时）**，卡面原文即如此（不是自己第一个回合）。
++			//   三个时机一起挂、谁先到谁选，选完用 `_chosen` 占位，后续时机自动跳过：
++			//     · global:"gameStart"   —— 身份模式开局时 mode 会 trigger("gameStart")（mode/identity.js:416）
++			//     · player:"enterGame"   —— 引擎为角色建的 enterGame 事件（game/index.js:9985 triggerEnter）
++			//     · player:"phaseBegin"  —— 兜底：万一前两个时机都没赶上，至少自己第一个回合能选上
++			//   触发时会在战斗日志里打印「触发时机」，便于确认究竟是哪个时机生效。
++			trigger: { global: ["gameStart"], player: ["enterGame", "phaseBegin"] },
++			filter(event, player) {
++				return !player.storage[`${id}_chosen`];
++			},
++			async content(event, trigger, player) {
++				if (player.storage[`${id}_chosen`]) {
++					return;
++				}
++				// 先占位：同一次开局里多个时机不会重复弹窗
++				player.storage[`${id}_chosen`] = true;
++				const timing = event.triggername || trigger.triggername || trigger.name || "?";
++				const { bool, targets } = await player
++					.chooseTarget({
++						prompt: "前排：选择一名其他角色（只要你存活，其使用伤害牌时必须尽可能以你为目标）",
++						filterTarget: lib.filter.notMe,
++						selectTarget: 1,
++						forced: true,
++						ai(target) {
++							// 优先盯住敌对角色
++							return -get.attitude(player, target);
++						},
++					})
++					.forResult();
++				if (!bool || !targets || !targets.length) {
++					// 没选上（forced 理论上不会发生）→ 解除占位，留给下一个时机再问
++					delete player.storage[`${id}_chosen`];
++					game.log(player, "的【前排】选择目标失败（触发时机：" + timing + "），将在下个时机重试");
++					return;
++				}
++				player.storage[`${id}_target`] = targets[0];
++				player.addSkill(force);
++				game.log(player, "的【前排】在【" + timing + "】时机紧盯", targets[0]);
++			},
++		},
++		[force]: {
++			sub: true,
++			charlotte: true,
++			silent: true,
++			forced: true,
++			popup: false,
++			nopop: true,
++			trigger: { global: "useCard" },
++			filter(event, player) {
++				// 集中状态（日奈礼服【开幕】）：不受嘲讽类效果影响 —— 注意要看**被强制的一方**
++				//   （event.player 就是被前排盯住的那名角色）；写成技能持有者（星野）是死代码（子代理复核指出）
++				if (event.player && event.player.hasSkill("yomi_ba_jizhong")) {
++					return false;
++				}
++				// 「被要求使用/响应」的牌不改目标（如借刀杀人目标被 filterTarget 锁死，改了会自相矛盾）
++				if (event.respondTo) {
++					return false;
++				}
++				const target = player.storage[`${id}_target`];
++				if (!target || !player.isAlive()) {
++					return false;
++				}
++				// 只盯「被选定那名角色」使用的牌
++				if (event.player !== target) {
++					return false;
++				}
++				if (!event.card || !get.tag(event.card, "damage")) {
++					return false;
++				}
++				if ((event.targets || []).includes(player)) {
++					return false;
++				}
++				// 已被排除的牌不再把你加回去（否则可能出现"唯一目标是被排除的你"→ 谁都不结算）
++				if (event.all_excluded || (event.excluded || []).includes(player)) {
++					return false;
++				}
++				if (!event.targets || !event.targets.length) {
++					return false;
++				}
++				// 「尽可能」= 你在合法目标之内（含攻击范围）才强制加入
++				// 用 targetEnabled2（本体"追加目标"类技能的统一用法，覆盖 mod.targetEnabled / modTarget 等）
++				return lib.filter.targetEnabled2(event.card, event.player, player) && lib.filter.targetInRange(event.card, event.player, player);
++			},
++			async content(event, trigger, player) {
++				// ★ 「必须尽可能包括你为目标」的落地（2026-10-05 用户实机纠正）：
++				//   「尽可能」= 在能选多目标时**把你加进去**；但**单目标**伤害牌（如普通【杀】）
++				//   必须以你为**唯一**目标 —— 不能让他去打别人，然后再把你补进来。
++				//   判定方式用「实际目标数 === 1」而不是卡的 selectTarget：这样方天画戟这类
++				//   临时扩目标的情况仍然只是「把你加进去」，不会被强制清空。
++				//   ⚠️ 必须**重新赋值数组**：useCard 常常直接引用调用方的 targets 数组
++				//   （player.useCard 对 players 数组是引用赋值），就地清空会污染调用方（子代理复核指出）。
++				if (trigger.targets.length === 1) {
++					trigger.targets = [player];
++					game.log(player, "因【前排】成为了", trigger.card, "的唯一目标");
++					return;
++				}
++				trigger.targets = trigger.targets.concat(player);
++				game.log(player, "因【前排】成为了", trigger.card, "的目标");
++			},
++		},
++	};
++}
++
++// ================================================================
++// 推进（id 保持 yomi_ba_tuijin：推近/推进 拼音相同，不动 id）
++//   卡面：每轮限一次，其它角色的回合，当其使用一张牌时，你可弃两张牌，令该使用无效，
++//         该牌回到手牌且直到其下个回合开始时不可使用。那之后，你获得一点护甲值。
++//   实现要点：
++//     · `round: 1` = 引擎原生「每轮限一次」。
++//     · 「令该使用无效」= `trigger.neutralize()`（引擎标准：untrigger + finish，见 gameEvent.ts:692）。
++//     · 「该牌回到手牌」= 无效后立刻 `user.gain(cards, "gain2")`。
++//     · 「直到其下个回合开始时不可使用」= 在牌实例上记 `storage[<id>_ban] = user.phaseNumber`，
++//       并给使用者挂载体子技能：`mod.cardEnabled` 判「标记 === user.phaseNumber」时禁用；
++//       使用者下个回合开始时 `phaseNumber` 自增 → 标记自然失效（无需额外清理）。
++//     · 「你获得一点护甲值」= `player.changeHujia(1)`。
++// ================================================================
++function makeTuijin(id) {
++	const ban = `${id}_ban`;
++	return {
++		[id]: {
++			round: 1,
++			// 专属台词 2 条（.ogg）
++			audio: "2:ogg",
++			trigger: { global: "useCard" },
++			// ★ AI 开关（触发技只有 check 能控）：推进=弃 2 张换「一张牌失效」+1 护甲，
++			//   弃掉的牌对手之后仍可能用，所以只有**关键时机**才值得（2026-10-05 用户指定的三种情形）
++			check(event, player) {
++				const user = event.player;
++				const card = event.card;
++				if (!user || !card || user === player) return false;
++				const name = get.name(card);
++				const targets = event.targets || [];
++				// ① 被拆/被顺、且自己手牌 ≤2：既保住之后的出牌能力，又顺手拿 1 护甲
++				if ((name === "guohe" || name === "shunshou") && targets.includes(player) && player.countCards("h") <= 2) {
++					return true;
++				}
++				// ② 敌人要用【酒】/【桃】（自救或救队友）：打断关键回复，可能直接送走一个敌人
++				if ((name === "tao" || name === "jiu") && get.attitude(player, user) < 0) {
++					return true;
++				}
++				// ③ 敌人对己方残血角色（含主公）使用伤害牌：保护
++				if (get.tag(card, "damage") && get.attitude(player, user) < 0) {
++					if (targets.some(t => t.hp <= 2 && (t === player || get.attitude(player, t) > 0))) return true;
++				}
++				return false;
++			},
++			filter(event, player) {
++				// 只在自己以外的角色回合、其使用一张**实体牌**时可用（虚拟牌无法「回到手牌」）
++				if (event.player === player) {
++					return false;
++				}
++				if (_status.currentPhase === player) {
++					return false;
++				}
++				if (!event.card || !event.cards || !event.cards.length) {
++					return false;
++				}
++				// 代价是弃两张牌
++				return player.countCards("he") >= 2;
++			},
++			async content(event, trigger, player) {
++				const user = trigger.player;
++				const cards = trigger.cards.slice();
++				const discard = await player
++					.chooseToDiscard({
++						position: "he",
++						selectCard: 2,
++						forced: true,
++						prompt: "推进：弃两张牌，令此牌的使用无效并回到其手牌",
++					})
++					.forResult();
++				if (!discard.bool || !discard.cards || discard.cards.length < 2) {
++					return;
++				}
++				game.log(player, "发动【推进】，令", user, "使用的", trigger.card, "无效");
++				// ① 令该使用无效
++				trigger.neutralize();
++				// ② 该牌回到使用者手牌
++				if (cards.length) {
++					await user.gain(cards, "gain2");
++					// ③ 直到其下个回合开始时不可使用
++					for (const card of cards) {
++						card.storage[`${id}_ban`] = user.phaseNumber;
++					}
++					if (!user.hasSkill(ban)) {
++						user.addSkill(ban);
++					}
++				}
++				// ④ 你获得一点护甲值
++				await player.changeHujia(1);
++			},
++		},
++		[ban]: {
++			sub: true,
++			charlotte: true,
++			silent: true,
++			forced: true,
++			// 自己的回合开始 → 清掉过期标记，身上再没有被禁的牌就摘掉载体（避免残留技能）
++			trigger: { player: "phaseBegin" },
++			async content(event, trigger, player) {
++				let still = false;
++				for (const card of player.getCards("hej")) {
++					const mark = card.storage[`${id}_ban`];
++					if (mark === undefined) {
++						continue;
++					}
++					if (mark < player.phaseNumber) {
++						// 已过期（使用者回合已翻页）→ 删除标记
++						delete card.storage[`${id}_ban`];
++					} else {
++						still = true;
++					}
++				}
++				if (!still) {
++					player.removeSkill(ban);
++				}
++			},
++			mod: {
++				// ⚠️ 必须用 `cardEnabled2` 而不是 `cardEnabled`（2026-10-05 实机踩坑：被禁的【桃】马上又被用掉）：
++				//   · 引擎的 `cardEnabled` 会先把实体牌 `get.autoViewAs` 成虚拟牌再查 mod → 牌实例上的标记丢了；
++				//   · `cardEnabled2` 只在「传入的是实体牌」时被调用（library/index.js:11320 / 11370），
++				//     且 **cardEnabled 与 cardRespondable 都会优先查 cardEnabled2**；
++				//   · 濒死时用【桃】自救走的是 respond 通道（cardRespondable），只有 cardEnabled2 拦得住。
++				//   标记里存的是「被禁当时」使用者的 phaseNumber；到其下个回合开始时自增 → 自动解禁。
++				cardEnabled2(card, player) {
++					if (card.storage[`${id}_ban`] === player.phaseNumber) {
++						return false;
++					}
++				},
++			},
++		},
++	};
++}
++
++// ================================================================
++// 缓救
++//   卡面：觉醒技，任意角色回合结束时，若你的体力为1，你觉醒并回复一点体力，
++//         之后的四个回合结束时，你均会回复一点体力。
++//   实现要点：
++//     · 主技能 `unique: true` + `forced: true`，触发时机 `global: "phaseJieshuBegin"`（回合结束时）。
++//     · 觉醒后挂载体子技能：之后每个回合结束时回复 1 点，共 4 次；用 `game.phaseNumber`
++//       跳过觉醒当下的那一次（否则同一次回合结束会回两次）。
++// ================================================================
++function makeHuanjiu(id) {
++	const heal = `${id}_heal`;
++	return {
++		[id]: {
++			unique: true,
++			forced: true,
++			locked: true,
++			// 专属台词 2 条（.ogg）
++			audio: "2:ogg",
++			skillAnimation: true,
++			animationColor: "legend",
++			trigger: { global: "phaseJieshuBegin" },
++			filter(event, player) {
++				return !player.storage[id] && player.hp === 1;
++			},
++			async content(event, trigger, player) {
++				player.awakenSkill(id);
++				player.storage[id] = true;
++				game.log(player, "觉醒【缓救】");
++				// 觉醒当下先回复 1 点
++				await player.recover(1);
++				// 之后的四个回合结束时各回复 1 点（跳过本次）
++				player.storage[`${id}_count`] = 4;
++				player.storage[`${id}_skip`] = game.phaseNumber;
++				if (!player.hasSkill(heal)) {
++					player.addSkill(heal);
++				}
++			},
++		},
++		[heal]: {
++			sub: true,
++			charlotte: true,
++			silent: true,
++			forced: true,
++			trigger: { global: "phaseJieshuBegin" },
++			filter(event, player) {
++				if (!player.storage[`${id}_count`]) {
++					return false;
++				}
++				// 觉醒当下的那个回合不再重复回复
++				return player.storage[`${id}_skip`] !== game.phaseNumber;
++			},
++			async content(event, trigger, player) {
++				player.storage[`${id}_count`]--;
++				await player.recover(1);
++				if (!player.storage[`${id}_count`]) {
++					player.removeSkill(heal);
++				}
++			},
++		},
++	};
++}
++
++// ================================================================
++// 工厂函数（同名技能；每次返回全新对象）
++// ================================================================
++function makeHoupai(id) {
++	return {
++		[id]: {
++			forced: true,
++			locked: true,
++			// 锁定技：其它角色计算与你间距离时+1（对照本体「马术」mashu 的 distance 写法）
++			mod: {
++				globalTo(from, to, distance) {
++					return distance + 1;
++				},
++			},
++		},
++	};
++}
++
++// 冲浪：每轮开始时，弃一张牌，以此具有「英姿」「回血」「红克」「加攻」直到本技能再次发动
++function makeChonglang(id) {
++	return {
++		[id]: {
++			// 卡面没有「可以」→ **必发**：每轮开始必定弃一张牌（拿不出牌则无效果），不询问是否发动（2026-10-05 用户要求）
++			forced: true,
++			// 不显式写 silent：引擎对 yomi_+trigger+forced 会自动补 silent，
++			// 而显式 silent 会让 popup 变 false → 自动语音播放被跳过（复查 high 项）
++			trigger: { global: "roundStart" },
++			filter(event, player) {
++				return player.countCards("he") > 0;
++			},
++			derivation: ["yingzi", "yomi_ba_huixue", "yomi_ba_hongke", "yomi_ba_jiagong"],
++			async content(event, trigger, player) {
++				const discard = await player
++					.chooseToDiscard({ position: "he", selectCard: 1, forced: true, prompt: "冲浪：弃置一张牌" })
++					.forResult();
++				if (!discard.bool || !discard.cards || !discard.cards.length) return;
++				// ★ 重新获得衍生技之前，先清掉「已选过目标」的旗标：
++				//   红克/加攻 的效果是「获得本技能时指定至多三名角色」，
++				//   第二轮及以后重新获得它们时，必须**重新弹窗选人**（2026-10-05 用户要求）。
++				delete player.storage.yomi_ba_hongke_done;
++				delete player.storage.yomi_ba_jiagong_done;
++				// 衍生技：先失去先前获得的，再获得新的（addAdditionalSkills 的 keep=false 语义）
++				//   → 失去时会触发各自的 onremove（撤掉旧目标身上的 buff），获得时触发
++				//     changeSkillsAfter → 红克/加攻 重新询问目标
++				// ★ 重新授予衍生技：必须走引擎 API（它负责 additionalSkills 记账 + game.broadcast），
++				//   并且**先显式移除旧的**——只有真正 removeSkill 才会触发各自 onremove
++				//   （撤掉上一轮给目标挂的 buff），随后 changeSkillsAfter 再让 红克/加攻 重新弹窗选人。
++				//   ⚠️ 不要手拼 changeSkills：那样技能会被写进 player.skills，之后再也回收不掉（曾踩）。
++				const grant = ["yingzi", "yomi_ba_huixue", "yomi_ba_hongke", "yomi_ba_jiagong"];
++				if (player.additionalSkills[id]) {
++					await player.removeAdditionalSkills(id);
++				}
++				// keep 传 true：上面已显式移除；传 false 会因同名同时出现在 add/remove 而被去重成空操作
++				await player.addAdditionalSkills(id, grant, true).set("popup", false);
++				game.log(player, "的【冲浪】开始生效");
++			},
++		},
++	};
++}
++
++// 掩体：出牌阶段限一次，弃两张牌，直到你下次发动本技能，获得两点临时护甲；有护甲时受到的属性伤害减半
++function makeYanti(id) {
++	const half = `${id}_half`;
++	return {
++		[id]: {
++			enable: "phaseUse",
++			usable: 1,
++			position: "he",
++			filterCard: true,
++			selectCard: 2,
++			filter(event, player) {
++				return player.countCards("he") >= 2;
++			},
++			prompt: "弃置两张牌，获得两点临时护甲值（直到本技能下次发动）",
++			async content(event, trigger, player) {
++				// 「直到你下次发动本技能」→ 先清掉本技能上一次给的临时护甲
++				clearTempHujiaByKey(player, id);
++				gainTempHujia(player, 2, null, id);
++				player.addSkill(half);
++			},
++			ai: {
++				// 换来的护甲是**临时**的：满血（≥5）时不想用，除非手上有两张低价值牌顺便换
++				order(card, player) {
++					if (!player) return 1;
++					if (player.hp >= 5) {
++						const low = player.getCards("h").filter(c => (get.value(c, player) || 1) <= 4).length;
++						return low >= 2 ? 2 : 0;
++					}
++					return 2;
++				},
++				result: () => ({ player: 1 }),
++			},
++		},
++		[half]: {
++			sub: true,
++			charlotte: true,
++			silent: true,
++			forced: true,
++			popup: false,
++			trigger: { player: "damageBegin3" },
++			filter(event, player) {
++				return player.hujia > 0 && !!event.nature;
++			},
++			async content(event, trigger, player) {
++				trigger.num = Math.floor(trigger.num / 2);
++			},
++			onremove(player) {
++				// 临时护甲由「临」标记统一管理，这里不额外处理
++			},
++		},
++	};
++}
++
++// 压射：真伤 —— ① 基础 ② 增益 ③ 大于1则-1 ④ 拆成若干 1 点 ⑤ 每点不可被归零；无视护甲；结束阶段摸两张
++function makeYashe(id) {
++	const guard = `${id}_guard`;
++	const draw = `${id}_draw`;
++	return {
++		[id]: {
++			forced: true,
++			locked: true,
++			group: [guard, `${id}_true`, draw],
++		},
++		[guard]: {
++			sub: true,
++			charlotte: true,
++			silent: true,
++			forced: true,
++			popup: false,
++			trigger: { source: "damageBegin4" },
++			filter(event, player) {
++				return event.num > 0 && !event[`${id}_point`];
++			},
++			// ⚠️ 必须是 async：同步 content 会被引擎的 StepCompiler 重新编译成独立函数，
++			//   工厂闭包里的 `id` 在编译后就丢了 → 运行期报 `id is not defined`（2026-10-05 实机踩到）。
++			//   凡是引用工厂闭包变量的 content 一律写成 async。
++			async content(event, trigger, player) {
++				// 压射是纯容器技能（自身没有触发时机）→ 语音在这里手动播，只播一次
++				game.trySkillAudio("yomi_ba_yashe", player, true, true);
++				// ③ 大于 1 则 -1
++				let num = trigger.num;
++				if (num < 1) return; // 不足 1 点的小数伤害不拆分（避免 for 循环多打一次）
++				if (num > 1) num -= 1;
++				if (num <= 0) return;
++				// ④ 取消原伤害，拆成 num 个 1 点
++				trigger.cancel();
++				for (let i = 0; i < num; i++) {
++					const next = trigger.player.damage(1, player, trigger.nature, trigger.card);
++					next.set(`${id}_point`, true); // ⑤ 标记「拆分出的 1 点」
++					next.set("nohujia", true); // 无视护甲值
++				}
++				game.log(player, "的【压射】把", get.cnNumber(trigger.num), "点伤害拆成", get.cnNumber(num), "次 1 点");
++			},
++		},
++		[`${id}_true`]: {
++			sub: true,
++			charlotte: true,
++			silent: true,
++			forced: true,
++			popup: false,
++			trigger: { source: ["damageBegin2", "damageBegin3"] },
++			filter(event, player) {
++				// 拆分点：无条件归一到 1（既保证"不为 0"，也防止加攻/破甲等对拆分点二次加成）
++				return !!event[`${id}_point`];
++			},
++			async content(event, trigger, player) {
++				trigger.num = 1; // ⑤ 每一点不会因任何情况变为 0
++			},
++		},
++		[draw]: {
++			sub: true,
++			charlotte: true,
++			silent: true,
++			forced: true,
++			popup: false,
++			trigger: { player: "phaseJieshuBegin" },
++			filter(event, player) {
++				// getHistory 的文档明确是「当前回合内该玩家指定类型的历史事件」
++				return player.getHistory("useCard").length >= 2;
++			},
++			async content(event, trigger, player) {
++				await player.draw(2);
++			},
++		},
++	};
++}
++// ================================================================
++// 临时护甲（「临」标记）—— 用户 2026-10-05 设计
++//   · 临时护甲直接加进 player.hujia（等价护甲，优先被消耗）
++//   · 同时在 storage 里为「每一点」记一条 {key, expire}，标记显示「临」
++//   · 护甲减少时先进先出扣除；到 expire 时限若标记仍在 → 扣掉对应护甲（不算受伤/失去体力）
++// ================================================================
++function refreshTempHujia(player) {
++	const list = player.storage.yomi_ba_temp_hujia || [];
++	if (!list.length) {
++		delete player.storage.yomi_ba_temp_hujia;
++		player.removeSkill("yomi_ba_temp_hujia");
++		return;
++	}
++	player.addSkill("yomi_ba_temp_hujia");
++	player.markSkill("yomi_ba_temp_hujia");
++}
++
++/** 获得 n 点临时护甲；expire 为清除时限键（"phaseBegin"＝自己下个回合开始；null＝只靠 key 清除） */
++function gainTempHujia(player, num, expire, key) {
++	if (!player.storage.yomi_ba_temp_hujia) player.storage.yomi_ba_temp_hujia = [];
++	for (let i = 0; i < num; i++) player.storage.yomi_ba_temp_hujia.push({ key, expire });
++	player.changeHujia(num);
++	refreshTempHujia(player);
++	game.log(player, "获得了", get.cnNumber(num), "点临时护甲");
++}
++
++/** 按来源 key 清除（例如「掩体」下次发动时清掉上次给的） */
++function clearTempHujiaByKey(player, key) {
++	const list = player.storage.yomi_ba_temp_hujia || [];
++	let n = 0;
++	for (let i = list.length - 1; i >= 0; i--) {
++		if (list[i].key === key) {
++			list.splice(i, 1);
++			n++;
++		}
++	}
++	if (n) reduceTempHujia(player, n);
++	refreshTempHujia(player);
++}
++
++/** 到点清除 */
++function expireTempHujia(player, expire) {
++	const list = player.storage.yomi_ba_temp_hujia || [];
++	let n = 0;
++	for (let i = list.length - 1; i >= 0; i--) {
++		if (list[i].expire === expire) {
++			list.splice(i, 1);
++			n++;
++		}
++	}
++	if (n) reduceTempHujia(player, n);
++	refreshTempHujia(player);
++}
++
++/** 扣护甲但不触发「临」标记的连带扣除（用 locked 旗标防重入） */
++function reduceTempHujia(player, n) {
++	// ⚠️ 不能用 storage 旗标：changeHujia 只把事件推进队列，真正执行在下一个 tick，
++	//   旗标会在同一个同步块里就被删掉 → 到期清除会被误当成"被伤害消耗"而重复扣条目。
++	//   正确做法：标记挂在**事件对象**上，随事件一起排队。
++	const ev = player.changeHujia(-n);
++	ev.yomi_ba_temp_removing = true;
++}
++/** 清掉「终射第 3 次」的翻倍状态（旗标 + 载体）：所有分支（含提前 return）都必须调用 */
++function clearZhongsheDouble(player) {
++	delete player.storage.yomi_ba_zhongshe_third;
++	player.removeSkill("yomi_ba_zhongshe_double");
++}
++
++// ================================================================
++// 周备：你造成的火焰伤害翻倍 + 数值锁定（第三方增/减无效，只有"取消"能影响）
++//   · damageBegin3（增益结算完、且 awaited）：先加后乘 → 翻倍并记下锁定值
++//   · damageBegin4（伤害真正打出前最后一步）：把数值拉回锁定值（除非这次伤害被 cancel）
++//   · 幂等：同一伤害事件只翻一次（主技能与载体都挂此函数，互为双保险）
++// ================================================================
++function zhoubeiDamage(step, trigger, player) {
++	// step 来自 event.triggername（"damageBegin3" / "damageBegin4"）——
++	//   ⚠️ 不能看 trigger.name：damage 类触发传进来的是**伤害事件本身**，其 name 恒为 "damage"，
++	//   这正是之前「周备不翻倍」的真因（代码永远走了 damageBegin4 分支）。
++	//   语义（2026-10-05 用户选定 A 案）：翻倍后的数值**不再被任何后续效果修改**（第三方加/减都无效）。
++	if (step === "damageBegin3") {
++		if (trigger.yomi_ba_zhoubei_doubled) return;
++		trigger.yomi_ba_zhoubei_doubled = true;
++		trigger.num *= 2;
++		trigger.set("yomi_ba_zhoubei_lock", trigger.num);
++		return;
++	}
++	if (trigger._cancelled || trigger.cancelled) return;
++	const lock = trigger.yomi_ba_zhoubei_lock;
++	if (typeof lock === "number" && lock > 0) trigger.num = lock;
++}
++
++// ================================================================
++// 每位武将的专属受伤 / 回复配音（**数据驱动**：条数由 audio/ 下实际存在的文件决定）
++//   · hurt   ：受到伤害 / 失去体力 → 只出声、无台词（纯音效）
++//   · recover：回复体力 → 出声 + 弹出与该音频一一对应的台词气泡
++//   · 文件命名：audio/skill/<武将id>_hurt<序号>.<ext> / _recover<序号>.<ext>
++//   · 生成方式：tools/voice_auto_import.py 按 VoiceLines 目录结构导入
++// ================================================================
++const VOICE_TABLE = {
++	yomi_ba_azusa: { hurt: 3, recover: 2, ext: "ogg" },
++	yomi_ba_azusa_swim: { hurt: 3, recover: 2, ext: "ogg" },
++	yomi_ba_hina: { hurt: 3, recover: 2, ext: "ogg" },
++	yomi_ba_hina_dress: { hurt: 2, recover: 2, ext: "ogg" },
++	yomi_ba_hina_swim: { hurt: 3, recover: 2, ext: "ogg" },
++	yomi_ba_hoshino: { hurt: 2, recover: 2, ext: "ogg" },
++	yomi_ba_hoshino_atk: { hurt: 2, recover: 2, ext: "ogg" },
++	yomi_ba_hoshino_def: { hurt: 3, recover: 2, ext: "ogg" },
++	yomi_ba_hoshino_swim: { hurt: 2, recover: 2, ext: "ogg" },
++};
++
++for (const cid of Object.keys(VOICE_TABLE)) {
++	const v = VOICE_TABLE[cid];
++	if (v.hurt) {
++		skills[`${cid}_hurt`] = {
++			charlotte: true,
++			silent: true,
++			forced: true,
++			popup: false,
++			nopop: true,
++			sub: true,
++			audio: `${v.hurt}:${v.ext}`,
++			audioNoText: true, // 自检工具用：只出声、不显示台词
++			trigger: { player: ["damageEnd", "loseHpEnd"] },
++			async content(event, trigger, player) {
++				// 节流：压射会把一次伤害拆成多次 1 点 → 避免受伤语音叠播（复查 low 项）
++				// 节流改用时间戳：无定时器、存档/联机后自动过期（setTimeout 一旦丢失会永久静音）
++				const _cd = `${cid}_hurt_at`;
++				const _now = Date.now();
++				if (_now - (player.storage[_cd] || 0) < 800) return;
++				player.storage[_cd] = _now;
++				game.trySkillAudio(`${cid}_hurt`, player, true, true);
++			},
++		};
++	}
++	if (v.recover) {
++		skills[`${cid}_recover`] = {
++			charlotte: true,
++			silent: true,
++			forced: true,
++			popup: false,
++			nopop: true,
++			sub: true,
++			audio: `${v.recover}:${v.ext}`,
++			trigger: { player: "recoverEnd" },
++			async content(event, trigger, player) {
++				// 音频与台词一一对应：先定随机序号，再用同序号的文本
++				const idx = Array.from({ length: v.recover }, (_, i) => i + 1).randomGet();
++				if (lib.config.background_speak) {
++					game.playAudio("skill", `${cid}_recover${idx}.${v.ext}`);
++				}
++				const text = lib.translate[`#${cid}_recover${idx}`];
++				if (text) player.say(text);
++			},
++		};
++	}
++}
++
++
++// ================================================================
++// 技能语音：按实际存在的音频文件补 audio 字段
++//   （引擎里不写 audio 就完全不播 —— 复查 high 项）
++//   · 冲浪：不能显式写 silent（见上），引擎护栏补的 silent 不会关 popup，故可自动播
++//   · 压射：纯容器技能无触发时机，语音在 yomi_ba_yashe_guard 里手动播
++//   · 终射：语音在其 content 里按「第几次发动」手动播，这里必须跳过（否则双播）
++// ================================================================
++const SKILL_VOICE = {
++	chonglang: 2, huandan: 2, huban: 2, jiangfang: 2, jishe: 2, kaimu: 6, pojia: 2, pojia2: 2,
++	sushe: 2, xuanyun: 2, yanti: 2, zhongmu: 2, zhongmu2: 2, zuandan: 3, zuandan2: 3,
++};
++for (const key of Object.keys(SKILL_VOICE)) {
++	const skill = skills[`yomi_ba_${key}`];
++	if (skill) skill.audio = `${SKILL_VOICE[key]}:ogg`;
++}
++
++
++// ================================================================
++// 批次 02（2026-10-06）：12 武将 / 35 技能 + 内部载体
++//   卡面转录与设计确认见工作区 `武将批次_02.md`（用户 2026-10-06 逐条拍板）
++//   · 同名同效果 → 工厂加后缀：支援 ×3（makeZhiyuan）、前排 复用 makeQianpai
++//   · 同名不同效果 → 独立实现：充能 / 光炮 / 换弹 / 暴击 / 补水 / 破甲
++//   · 「独立乘区」类伤害（新星）＝ damageBegin3 先加后乘、damageBegin4 锁值（同周备）
++//   · 「需要 N 张闪」＝ customArgs[目标id].shanRequired（本体【无双】的做法）
++// ================================================================
++
++/** 是否为「伤害牌」（引擎原生判断；自制伤害牌已补 ai.tag.damage） */
++function isDamageCard(card) {
++	return !!get.is.damageCard(card);
++}
++
++/** 伤害事件对应的 useCard 事件（没有则 null） */
++function parentUseCard(event) {
++	return event.getParent("useCard") || null;
++}
++
++/** 伤害是否来自「仅指定一名角色为目标」的伤害牌 */
++function fromSingleTargetCard(event) {
++	const evt = parentUseCard(event);
++	return !!evt && (evt.targets || []).length === 1;
++}
++
++/** 向上找最近一个带 targets 的祖先事件（用于判断「多目标效果」） */
++function nearestTargetsEvent(event) {
++	let evt = event.getParent();
++	for (let i = 0; i < 6 && evt; i++) {
++		if (evt.targets) return evt;
++		evt = evt.getParent();
++	}
++	return null;
++}
++
+ /** 向上找最近一个带数字 shanRequired 的祖先事件（本体【杀】的每目标事件，名字＝卡名 "sha"）
+  *  ⚠️ 不能用 getParent("useCardToPlayered")：那是 useCard 的**兄弟**事件，不在 damage 的祖先链上
+  *  （祖先链是 damage → sha（卡名事件）→ useCard，见 content.ts:10343 与 10368-10375） */
+@@ -1632,1317 +1632,1325 @@ function damageSkill(target, num, source, nature) {
+ 	return evt;
+ }
+ 
+-/** 该次伤害是否来自「本回合使用的第一张牌」 */
+-function isFirstCardDamage(event, player) {
+-	const evt = parentUseCard(event);
+-	return !!evt && player.getHistory("useCard").indexOf(evt) === 0;
+-}
+-
+-/** 支援：锁定技，包括多名角色为目标的效果对你造成的伤害-1（同名同效果 ×3 → 工厂） */
+-function makeZhiyuan(id) {
+-	return {
+-		[id]: {
+-			forced: true,
+-			locked: true,
+-			trigger: { player: "damageBegin3" },
+-			filter(event, player) {
+-				if (event.num <= 0) return false;
+-				const evt = nearestTargetsEvent(event);
+-				return !!evt && evt.targets.length > 1 && evt.targets.includes(player);
+-			},
+-			async content(event, trigger, player) {
+-				trigger.num--;
+-				game.log(player, "因【支援】受到的伤害-1");
+-			},
+-		},
+-	};
+-}
+-
+-/** 共用：给某个技能做「锁定数值」的内部载体（先记后还原，本技能伤害不受其它效果影响） */
+-function makeDamageLock(id, flag) {
+-	return {
+-		[`${id}_lock`]: {
+-			sub: true,
+-			charlotte: true,
+-			silent: true,
+-			forced: true,
+-			popup: false,
+-			nopop: true,
+-			trigger: { source: ["damageBegin3", "damageBegin4"] },
+-			filter(event, player) {
+-				if (event.triggername === "damageBegin4") return typeof event[`${flag}_locked`] === "number";
+-				return !!event[flag];
+-			},
+-			async content(event, trigger, player) {
+-				if (event.triggername === "damageBegin4") {
+-					trigger.num = trigger[`${flag}_locked`];
+-					delete trigger[`${flag}_locked`];
+-					return;
+-				}
+-				trigger[`${flag}_locked`] = trigger.num;
+-			},
+-		},
+-	};
+-}
+-
+-const skillsBatch02 = {
+-	// ---------- 工厂：支援 ×3 / 前排 复用 ----------
+-	...makeZhiyuan("yomi_ba_zhiyuan"),
+-	...makeZhiyuan("yomi_ba_zhiyuan2"),
+-	...makeZhiyuan("yomi_ba_zhiyuan3"),
+-	...makeQianpai("yomi_ba_qianpai3"),
+-	...makeDamageLock("yomi_ba_renu", "yomi_ba_renu"),
+-
+-	// ---------- 标记载体：光 / 水 ----------
+-	yomi_ba_guang: {
+-		sub: true,
+-		mark: true,
+-		intro: {
+-			name: "光",
+-			content: "mark",
+-		},
+-	},
+-	yomi_ba_shui: {
+-		sub: true,
+-		mark: true,
+-		intro: {
+-			name: "水",
+-			content: "mark",
+-		},
+-	},
+-
+-	// ================================================================
+-	// 0017 爱丽丝（女仆）：充能 / 瞄准 / 光炮
+-	// ================================================================
+-	// 充能：锁定技，你使用【杀】后，直到你的下个回合结束，你造成的雷电伤害+1（不可叠加）
+-	yomi_ba_chongneng: {
+-		forced: true,
+-		locked: true,
+-		trigger: { player: "useCard" },
+-		filter(event, player) {
+-			return get.name(event.card) === "sha";
+-		},
+-		async content(event, trigger, player) {
+-			// 跨回合窗口用回合号（坑 3）：end = 自己下个回合
+-			player.storage.yomi_ba_chongneng_end = player.phaseNumber + 1;
+-			game.log(player, "的【充能】生效：直到其下个回合结束，雷电伤害+1");
+-		},
+-		group: ["yomi_ba_chongneng_buff"],
+-	},
+-	yomi_ba_chongneng_buff: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { source: "damageBegin3", player: "phaseAfter" },
+-		filter(event, player) {
+-			const end = player.storage.yomi_ba_chongneng_end;
+-			if (typeof end !== "number") return false;
+-			if (event.triggername === "phaseAfter") return player.phaseNumber >= end;
+-			return player.phaseNumber <= end && event.num > 0 && event.hasNature("thunder");
+-		},
+-		async content(event, trigger, player) {
+-			if (event.triggername === "phaseAfter") {
+-				delete player.storage.yomi_ba_chongneng_end;
+-				return;
+-			}
+-			trigger.num++;
+-			game.log(player, "的【充能】使雷电伤害+1");
+-		},
+-	},
+-	// 瞄准：锁定技（南蛮/万箭只可一名目标 + 单目标伤害牌伤害+1）
+-	yomi_ba_miaozhun: {
+-		forced: true,
+-		locked: true,
+-		mod: {
+-			selectTarget(card, player, range) {
+-				const name = get.name(card);
+-				// 只可选定一名其它角色：range[0] 也要改，否则南蛮/万箭可以 0 目标使用（复查 medium）
+-				if (name === "nanman" || name === "wanjian") {
+-					range[0] = 1;
+-					range[1] = 1;
+-				}
+-			},
+-		},
+-		group: ["yomi_ba_miaozhun_dmg"],
+-	},
+-	yomi_ba_miaozhun_dmg: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { source: "damageBegin3" },
+-		filter(event, player) {
+-			return event.num > 0 && fromSingleTargetCard(event);
+-		},
+-		async content(event, trigger, player) {
+-			trigger.num++;
+-			game.log(player, "的【瞄准】使伤害+1");
+-		},
+-	},
+-	// 光炮：出牌阶段限一次，弃两张牌 → 雷【杀】，需要两张【闪】响应
+-	yomi_ba_guangpao: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 2,
+-		filter(event, player) {
+-			return player.countCards("he") >= 2 && game.hasPlayer(current => current !== player);
+-		},
+-		prompt: "弃置两张牌，视为对一名其它角色使用一张雷【杀】（此【杀】需要两张【闪】响应）",
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "光炮：选择目标",
+-					filterTarget: lib.filter.notMe,
+-					selectTarget: 1,
+-					ai: aiEnemy(player),
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			// 标记「本次这张杀来自光炮」→ 由 yomi_ba_guangpao_watch 给它登记 shanRequired = 2
+-			player.storage.yomi_ba_guangpao_active = true;
+-			try {
+-				await player.useCard({ name: "sha", nature: "thunder" }, targets[0]).set("addCount", false);
+-			} finally {
+-				delete player.storage.yomi_ba_guangpao_active;
+-			}
+-		},
+-		ai: { order: 1, result: { player: 1 } },
+-		group: ["yomi_ba_guangpao_watch"],
+-	},
+-	yomi_ba_guangpao_watch: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		// 本体【无双】的做法：在 useCardToPlayered 上给该目标登记 shanRequired
+-		trigger: { player: "useCardToPlayered" },
+-		filter(event, player) {
+-			return !!player.storage.yomi_ba_guangpao_active && get.name(event.card) === "sha" && !(event.getParent()?.directHit || []).includes(event.target);
+-		},
+-		logTarget: "target",
+-		async content(event, trigger, player) {
+-			const id = trigger.target.playerid;
+-			const map = trigger.getParent()?.customArgs;
+-			if (id == null || !map) return;
+-			if (!map[id]) map[id] = {};
+-			map[id].shanRequired = 2;
+-			game.log(trigger.target, "需要两张【闪】才能抵消此【杀】");
+-		},
+-	},
+-
+-	// ================================================================
+-	// 0018 爱丽丝：充能 / 光炮
+-	// ================================================================
+-	// 充能（第二份，效果不同）：每轮开始时，摸一张牌，获得一个「光」（上限 2）
+-	yomi_ba_chongneng2: {
+-		forced: true,
+-		locked: true,
+-		trigger: { global: "roundStart" },
+-		filter(event, player) {
+-			return player.isIn();
+-		},
+-		async content(event, trigger, player) {
+-			await player.draw(1);
+-			player.setMark("yomi_ba_guang", Math.min(2, player.countMark("yomi_ba_guang") + 1));
+-			game.log(player, "获得了「光」标记");
+-		},
+-	},
+-	// 光炮（第二份，效果不同）：弃三张牌 → 连续相邻的任意名其它角色各 1 点雷电伤害，消耗所有「光」每点 +1
+-	yomi_ba_guangpao2: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 3,
+-		filter(event, player) {
+-			return player.countCards("he") >= 3 && game.hasPlayer(current => current !== player);
+-		},
+-		prompt: "弃置三张牌，对连续相邻的任意名其它角色各造成1点雷电伤害；消耗所有「光」，每消耗一个此伤害+1",
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "光炮：选择连续相邻的任意名其它角色（中间不得断开；已死亡的角色自动略过）",
+-					filterTarget(card, p, target) {
+-						if (target === p || !target.isIn()) return false;
+-						const selected = ui.selected.targets || [];
+-						if (!selected.length) return true;
+-						// 连续：必须与已选角色的某一端相邻（getNext/getPrevious 会自动跳过死亡角色）
+-						return selected.some(t => t.getNext() === target || t.getPrevious() === target);
+-					},
+-					selectTarget: [1, Infinity],
+-					ai: aiEnemy(player),
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			const num = player.countMark("yomi_ba_guang");
+-			if (num > 0) {
+-				player.removeMark("yomi_ba_guang", num);
+-				game.log(player, "消耗了", get.cnNumber(num), "个「光」标记");
+-			}
+-			for (const target of targets) await target.damage(1 + num, player, "thunder");
+-		},
+-		ai: { order: 1, result: { player: 1 } },
+-	},
+-
+-	// ================================================================
+-	// 0019 爱丽丝（临战）：解放 / 换弹 / 光剑 / 新星
+-	// ================================================================
+-	// 解放：锁定技，你造成的所有伤害视为技能伤害，你的技能伤害+1
+-	yomi_ba_jiefang: {
+-		forced: true,
+-		locked: true,
+-		trigger: { source: ["damageBegin1", "damageBegin2"] },
+-		filter(event, player) {
+-			return true;
+-		},
+-		async content(event, trigger, player) {
+-			if (event.triggername === "damageBegin1") {
+-				// ① 视为技能伤害：清掉**牌来源 card**（护甲/藤甲等按「牌造成的伤害」判定的效果不再适用）
+-				//    注意只删 card、保留 cards —— 寒冰剑/麒麟弓等武器效果会读 cards，删了会静默失效（复查 low）
+-				if (trigger.card) {
+-					delete trigger.card;
+-					game.log(player, "的【解放】使此伤害视为技能伤害");
+-				}
+-				return;
+-			}
+-			// ② 你的技能伤害+1（此时所有伤害都已视为技能伤害）
+-			//    damageSkill() 已经替 0 点伤害 +1 过（0 点会被引擎 filterStop 直接 finish）→ 跳过
+-			if (trigger.yomi_ba_jiefang_pre) {
+-				delete trigger.yomi_ba_jiefang_pre;
+-				return;
+-			}
+-			if (!trigger.card && trigger.num >= 0) {
+-				trigger.num++;
+-				game.log(player, "的【解放】使技能伤害+1");
+-			}
+-		},
+-	},
+-	// 换弹（第二份，效果不同）：使用【杀】并结算后，展示手牌，无【杀】则对该目标造成 0 点伤害并摸一张牌
+-	yomi_ba_huandan2: {
+-		trigger: { player: "useCardAfter" },
+-		filter(event, player) {
+-			if (get.name(event.card) !== "sha") return false;
+-			const targets = (event.targets || []).filter(t => t.isIn());
+-			return targets.length > 0;
+-		},
+-		async content(event, trigger, player) {
+-			const targets = (trigger.targets || []).filter(t => t.isIn());
+-			await player.showCards(player.getCards("h"), "【换弹】：展示手牌");
+-			if (player.countCards("h", { name: "sha" })) return;
+-			await player.draw(1);
+-			// 0 点伤害也要真的结算（临战爱丽丝的【解放】会把它变成 1 点）
+-			for (const target of targets) await damageSkill(target, 0, player);
+-		},
+-		ai: {
+-			// 手里没有【杀】才发动（避免泄露手牌）
+-			check(event, player) {
+-				return !player.countCards("h", { name: "sha" });
+-			},
+-		},
+-	},
+-	// 光剑：出牌阶段限两次，弃两张牌，获得一个「光」（上限 2）
+-	yomi_ba_guangjian: {
+-		enable: "phaseUse",
+-		usable: 2,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 2,
+-		filter(event, player) {
+-			return player.countCards("he") >= 2 && !player.hasSkill("yomi_ba_guangjian_ban");
+-		},
+-		prompt: "弃置两张牌，获得一个「光」标记（上限为两个）",
+-		async content(event, trigger, player) {
+-			player.setMark("yomi_ba_guang", Math.min(2, player.countMark("yomi_ba_guang") + 1));
+-			game.log(player, "获得了「光」标记");
+-		},
+-		ai: { order: 2, result: { player: 1 } },
+-	},
+-	yomi_ba_guangjian_ban: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-	},
+-	// 新星：弃两张牌 → 无限制雷【杀】，消耗所有「光」；每消耗一个独立乘区 +1、需要一张闪抵消一倍
+-	yomi_ba_xinxing: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 2,
+-		filter(event, player) {
+-			return player.countCards("he") >= 2 && game.hasPlayer(current => current !== player);
+-		},
+-		prompt: "弃置两张牌，视为对一名其它角色使用一张无限制的雷【杀】；消耗所有「光」，每消耗一个伤害增加一倍、并需要一张【闪】抵消一倍",
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "新星：选择目标",
+-					filterTarget: lib.filter.notMe,
+-					selectTarget: 1,
+-					ai: aiEnemy(player),
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			const target = targets[0];
+-			const num = player.countMark("yomi_ba_guang");
+-			if (num > 0) {
+-				player.removeMark("yomi_ba_guang", num);
+-				game.log(player, "消耗了", get.cnNumber(num), "个「光」标记");
+-			}
+-			// 发动后本阶段不可再发动「光剑」
+-			player.addTempSkill("yomi_ba_guangjian_ban", { player: "phaseUseEnd" });
+-			player.storage.yomi_ba_xinxing_ctx = { n: num };
+-			try {
+-				await player.useCard({ name: "sha", nature: "thunder" }, target).set("addCount", false);
+-			} finally {
+-				delete player.storage.yomi_ba_xinxing_ctx;
+-			}
+-			if (num >= 2) {
+-				const cand = [target, target.getPrevious(), target.getNext()].filter(i => i && i.isIn() && i !== player);
+-				if (cand.length) {
+-					const choose = await player
+-						.chooseTarget({
+-							prompt: "新星：你可以再对目标及其上家与下家中的任意名角色造成0点伤害",
+-							filterTarget: (card, p, t) => cand.includes(t),
+-							selectTarget: [1, cand.length],
+-							ai: aiEnemy(player),
+-						})
+-						.forResult();
+-					for (const t of choose.targets || []) await damageSkill(t, 0, player, "thunder");
+-				}
+-			}
+-		},
+-		mod: {
+-			targetInRange(card, player, target) {
+-				if (player.storage.yomi_ba_xinxing_ctx && get.name(card) === "sha") return true;
+-			},
+-		},
+-		ai: { order: 3, result: { player: 1 } },
+-		group: ["yomi_ba_xinxing_watch", "yomi_ba_xinxing_mul"],
+-	},
+-	yomi_ba_xinxing_watch: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { player: "useCardToPlayered" },
+-		filter(event, player) {
+-			const ctx = player.storage.yomi_ba_xinxing_ctx;
+-			return !!ctx && ctx.n > 0 && get.name(event.card) === "sha" && !(event.getParent()?.directHit || []).includes(event.target);
+-		},
+-		logTarget: "target",
+-		async content(event, trigger, player) {
+-			const id = trigger.target.playerid;
+-			const map = trigger.getParent()?.customArgs;
+-			if (id == null || !map) return;
+-			if (!map[id]) map[id] = {};
+-			// 乘区 = 1 + n ⇒ 完全抵消需要 n+1 张【闪】（每张闪使乘区 -1）
+-			map[id].shanRequired = player.storage.yomi_ba_xinxing_ctx.n + 1;
+-			game.log(trigger.target, "需要", get.cnNumber(map[id].shanRequired), "张【闪】才能完全抵消此【杀】");
+-		},
+-	},
+-	yomi_ba_xinxing_mul: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { source: ["damageBegin3", "damageBegin4"] },
+-		filter(event, player) {
+-			if (event.triggername === "damageBegin4") return typeof event.yomi_ba_xinxing_locked === "number";
+-			const ctx = player.storage.yomi_ba_xinxing_ctx;
+-			// ⚠️ 不能用 event.card 判断：同角色【解放】已在 damageBegin1 把牌来源清掉
+-			return !!ctx && ctx.n > 0 && !!shanRequiredEvent(event);
+-		},
+-		async content(event, trigger, player) {
+-			if (event.triggername === "damageBegin4") {
+-				trigger.num = trigger.yomi_ba_xinxing_locked;
+-				delete trigger.yomi_ba_xinxing_locked;
+-				return;
+-			}
+-			const ctx = player.storage.yomi_ba_xinxing_ctx;
+-			const evt = shanRequiredEvent(trigger);
+-			if (!ctx || !evt) return;
+-			// 独立乘区 = 剩余所需【闪】数（初始 n+1，每张闪 -1；减到 0 时整张杀被抵消，不会走到这里）
+-			const mul = Math.max(0, evt.shanRequired);
+-			if (mul <= 1) return;
+-			trigger.num *= mul;
+-			trigger.yomi_ba_xinxing_locked = trigger.num;
+-			game.log(player, "的【新星】独立乘区 ×" + mul);
+-		},
+-	},
+-
+-	// ================================================================
+-	// 0020 凯伊：支援 / 增幅 / 并肩 / 惹怒
+-	// ================================================================
+-	// 增幅：弃一张牌，至多两名角色直到你的下个出牌阶段开始时，雷电伤害+1 且每回合首张牌伤害+1
+-	yomi_ba_zengfu: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 1,
+-		filter(event, player) {
+-			return player.countCards("he") >= 1 && game.hasPlayer(current => current.isIn());
+-		},
+-		prompt: "弃置一张牌，选择至多两名角色：直到你的下个出牌阶段开始时，其雷电伤害+1、每回合使用的第一张牌伤害+1",
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "增幅：选择至多两名角色",
+-					filterTarget: (card, p, t) => t.isIn(),
+-					selectTarget: [1, 2],
+-					ai: aiAlly(player),
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			player.storage.yomi_ba_zengfu_targets = targets.slice();
+-			player.storage.yomi_ba_zengfu_end = player.phaseNumber + 1;
+-			for (const t of targets) {
+-				t.addSkill("yomi_ba_zengfu_buff");
+-				t.storage.yomi_ba_zengfu_caster = player;
+-			}
+-			player.addSkill("yomi_ba_zengfu_expire");
+-			game.log(player, "对", targets, "发动了【增幅】");
+-		},
+-		ai: { order: 2, result: { player: 1 } },
+-	},
+-	yomi_ba_zengfu_buff: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { source: "damageBegin3" },
+-		filter(event, player) {
+-			const caster = player.storage.yomi_ba_zengfu_caster;
+-			if (!caster || !caster.isIn() || event.num <= 0) return false;
+-			return event.hasNature("thunder") || isFirstCardDamage(event, player);
+-		},
+-		async content(event, trigger, player) {
+-			let n = 0;
+-			if (trigger.hasNature("thunder")) n++;
+-			if (isFirstCardDamage(trigger, player)) n++;
+-			if (!n) return;
+-			trigger.num += n;
+-			game.log(player, "的【增幅】使伤害+" + n);
+-		},
+-	},
+-	yomi_ba_zengfu_expire: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		// ⚠️ 跳过出牌阶段时 phaseUseBegin 不触发（坑 6）→ 加 phaseAfter 兜底
+-		trigger: { player: ["phaseUseBegin", "phaseAfter"] },
+-		filter(event, player) {
+-			const end = player.storage.yomi_ba_zengfu_end;
+-			return typeof end === "number" && player.phaseNumber >= end;
+-		},
+-		async content(event, trigger, player) {
+-			for (const t of player.storage.yomi_ba_zengfu_targets || []) {
+-				if (t.isIn()) {
+-					t.removeSkill("yomi_ba_zengfu_buff");
+-					delete t.storage.yomi_ba_zengfu_caster;
+-				}
+-			}
+-			delete player.storage.yomi_ba_zengfu_targets;
+-			delete player.storage.yomi_ba_zengfu_end;
+-			player.removeSkill("yomi_ba_zengfu_expire");
+-			game.log(player, "的【增幅】已结束");
+-		},
+-	},
+-	// 并肩：锁定技，发动「增幅」后，累积这几名角色造成伤害的 1/5（上限 5）
+-	yomi_ba_bingjian: {
+-		forced: true,
+-		locked: true,
+-		trigger: { global: "damageEnd" },
+-		filter(event, player) {
+-			const list = player.storage.yomi_ba_zengfu_targets;
+-			const end = player.storage.yomi_ba_zengfu_end;
+-			if (!list || !list.length || typeof end !== "number") return false;
+-			if (player.phaseNumber > end) return false;
+-			return event.num > 0 && list.includes(event.source);
+-		},
+-		async content(event, trigger, player) {
+-			const now = Math.min(5, (player.storage.yomi_ba_bingjian || 0) + trigger.num / 5);
+-			player.storage.yomi_ba_bingjian = now;
+-			game.log(player, "的【并肩】累积至", Math.round(now * 100) / 100);
+-		},
+-	},
+-	// 惹怒：锁定技，「增幅」结束后，选择一名累积角色以外的角色，对其造成 (1+X) 点雷电伤害（数值锁定）
+-	yomi_ba_renu: {
+-		forced: true,
+-		locked: true,
+-		trigger: { player: ["phaseUseBegin", "phaseAfter"] },
+-		filter(event, player) {
+-			const end = player.storage.yomi_ba_zengfu_end;
+-			return typeof end === "number" && player.phaseNumber >= end;
+-		},
+-		async content(event, trigger, player) {
+-			const list = player.storage.yomi_ba_zengfu_targets || [];
+-			const x = Math.floor(player.storage.yomi_ba_bingjian || 0);
+-			// ⚠️ 只清「并肩」累积值：targets / end 交给 yomi_ba_zengfu_expire 清
+-			//   （两者同触发同 filter，若这里把 end 删了，expire 会被 arrangeTrigger 重新求值丢掉 → 增幅 buff 永不过期）
+-			delete player.storage.yomi_ba_bingjian;
+-			if (!game.hasPlayer(t => t.isIn() && !list.includes(t))) {
+-				// 没有合法目标：不弹强制空框，直接结束（expire 会照常清窗口）
+-				game.log(player, "的【惹怒】没有合法目标");
+-				return;
+-			}
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "惹怒：选择一名累积角色以外的角色，对其造成" + (1 + x) + "点雷电伤害",
+-					filterTarget: (card, p, t) => t.isIn() && !list.includes(t),
+-					selectTarget: 1,
+-					forced: true,
+-					ai: aiEnemy(player),
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			const evt = targets[0].damage(1 + x, player, "thunder");
+-			evt.set("yomi_ba_renu", true);
+-			await evt;
+-		},
+-		group: ["yomi_ba_renu_lock"],
+-	},
+-
+-	// ================================================================
+-	// 0021 星野（临战）：切换
+-	// ================================================================
+-	// 切换：游戏开始前，选择装备防御武装或攻击武装（技能组 + 体力上限/体力值随之调整）
+-	yomi_ba_qiehuan: {
+-		forced: true,
+-		locked: true,
+-		trigger: { global: ["gameStart"], player: ["enterGame", "phaseBegin"] },
+-		filter(event, player) {
+-			return !player.storage.yomi_ba_qiehuan_done;
+-		},
+-		async content(event, trigger, player) {
+-			if (player.storage.yomi_ba_qiehuan_done) return;
+-			player.storage.yomi_ba_qiehuan_done = true;
+-			const { control } = await player
+-				.chooseControl("防御武装", "攻击武装")
+-				.set("prompt", "切换：选择要装备的武装")
+-				.set("ai", () => (player.hp <= 3 ? "防御武装" : "攻击武装"))
+-				.forResult();
+-			const isDef = control === "防御武装";
+-			const skills = isDef
+-				? ["yomi_ba_qianpai", "yomi_ba_yanti", "yomi_ba_huban", "yomi_ba_jiangfang"]
+-				: ["yomi_ba_yuanshe", "yomi_ba_sushe", "yomi_ba_yashe", "yomi_ba_jishe"];
+-			await player.addSkills(skills);
+-			// 体力上限/体力值：按「差值」平移 —— 主公/地主等已有加成原样保留（用户 2026-10-06 指定）
+-			const delta = (isDef ? 5 : 3) - 4;
+-			if (delta) {
+-				player.maxHp += delta;
+-				player.hp += delta;
+-				player.update();
+-			}
+-			game.log(player, "的【切换】装备了", isDef ? "防御武装" : "攻击武装");
+-			// 防御武装的【前排】必须能立刻选人（不能等到自己第一个回合）
+-			if (isDef && !player.storage.yomi_ba_qianpai_chosen) {
+-				const skill = lib.skill.yomi_ba_qianpai;
+-				if (skill && typeof skill.content === "function") {
+-					await skill.content({ triggername: "切换" }, {}, player);
+-				}
+-			}
+-		},
+-	},
+-
+-	// ================================================================
+-	// 0022 亚子：支援 / 治愈 / 暴击
+-	// ================================================================
+-	// 治愈：每轮结束时，你可选择一名角色，为其回复一点体力
+-	yomi_ba_zhiyu: {
+-		trigger: { global: "roundEnd" },
+-		filter(event, player) {
+-			return game.hasPlayer(current => current.isIn() && current.hp < current.maxHp);
+-		},
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "治愈：选择一名角色，为其回复一点体力",
+-					filterTarget: (card, p, t) => t.isIn() && t.hp < t.maxHp,
+-					selectTarget: 1,
+-					ai(target) {
+-						if (target === player) return 2;
+-						return get.attitude(player, target) >= 0 ? 1 + (target.maxHp - target.hp) * 0.1 : -1;
+-					},
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			await targets[0].recover();
+-		},
+-		ai: {
+-			check(event, player) {
+-				return game.hasPlayer(current => current.isIn() && current.hp < current.maxHp && (current === player || get.attitude(player, current) > 0));
+-			},
+-		},
+-	},
+-	// 暴击（第一份）：每轮限一次，一名角色回合开始时弃一张牌，其本回合内判定黑色则伤害翻倍
+-	yomi_ba_baoji: {
+-		round: 1,
+-		trigger: { global: "phaseBegin" },
+-		filter(event, player) {
+-			return event.player.isIn() && player.countCards("he") > 0;
+-		},
+-		async content(event, trigger, player) {
+-			const target = trigger.player;
+-			const { bool } = await player
+-				.chooseToDiscard({
+-					prompt: "暴击：弃一张牌，令其本回合造成伤害时判定，黑色则翻倍",
+-					position: "he",
+-					selectCard: 1,
+-				})
+-				.set("ai", card => 6 - get.value(card))
+-				.forResult();
+-			if (!bool) return;
+-			target.storage.yomi_ba_baoji_caster = player;
+-			// ⚠️ 不能先 addSkill 再 addTempSkill：引擎 addTempSkill 见「已有该技能且 tempSkills 未登记」会直接早退
+-			//    → 过期时间永远写不进去 → buff 永不过期（子代理复查 high）
+-			target.addTempSkill("yomi_ba_baoji_buff", { player: "phaseAfter" });
+-			game.log(player, "对", target, "发动了【暴击】");
+-		},
+-		ai: {
+-			check(event, player) {
+-				// 只给「本回合可能造成伤害」的自己人或自己
+-				const target = event.player;
+-				return (target === player || get.attitude(player, target) > 0) && player.countCards("he") > 0;
+-			},
+-		},
+-	},
+-	yomi_ba_baoji_buff: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { source: "damageBegin3" },
+-		filter(event, player) {
+-			const caster = player.storage.yomi_ba_baoji_caster;
+-			return !!caster && caster.isIn() && event.num > 0;
+-		},
+-		async content(event, trigger, player) {
+-			const { bool } = await player.judge(card => (get.color(card) === "black" ? 1 : 0)).forResult();
+-			if (!bool) return;
+-			trigger.num *= 2;
+-			game.log(player, "的【暴击】判定为黑色，伤害翻倍");
+-		},
+-	},
+-	// 暴击（第二份，效果不同）：出牌阶段限一次，弃三张牌，至多四名角色直到你下个回合开始，黑桃则翻倍
+-	yomi_ba_baoji2: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 3,
+-		filter(event, player) {
+-			return player.countCards("he") >= 3 && game.hasPlayer(current => current.isIn());
+-		},
+-		prompt: "弃置三张牌，令至多四名角色直到你的下个回合开始：造成伤害时判定，黑桃则翻倍",
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "暴击：选择至多四名角色",
+-					filterTarget: (card, p, t) => t.isIn(),
+-					selectTarget: [1, 4],
+-					ai: aiAlly(player),
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			for (const t of targets) {
+-				t.addSkill("yomi_ba_baoji2_buff");
+-				t.storage.yomi_ba_baoji2_caster = player;
+-				t.storage.yomi_ba_baoji2_end = player.phaseNumber + 1;
+-			}
+-			game.log(player, "对", targets, "发动了【暴击】");
+-		},
+-		ai: { order: 2, result: { player: 1 } },
+-	},
+-	yomi_ba_baoji2_buff: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { source: "damageBegin3", global: ["phaseBegin", "dieAfter"] },
+-		filter(event, player) {
+-			const caster = player.storage.yomi_ba_baoji2_caster;
+-			if (!caster) return false;
+-			if (event.triggername === "phaseBegin") {
+-				return event.player === caster && caster.phaseNumber >= (player.storage.yomi_ba_baoji2_end ?? Infinity);
+-			}
+-			if (event.triggername === "dieAfter") {
+-				return event.player === caster || event.player === player;
+-			}
+-			return event.num > 0;
+-		},
+-		async content(event, trigger, player) {
+-			if (event.triggername !== "damageBegin3") {
+-				player.removeSkill("yomi_ba_baoji2_buff");
+-				delete player.storage.yomi_ba_baoji2_caster;
+-				delete player.storage.yomi_ba_baoji2_end;
+-				game.log(player, "的【暴击】效果已移除");
+-				return;
+-			}
+-			const { bool } = await player.judge(card => (get.suit(card) === "spade" ? 1 : 0)).forResult();
+-			if (!bool) return;
+-			trigger.num *= 2;
+-			game.log(player, "的【暴击】判定为黑桃，伤害翻倍");
+-		},
+-	},
+-
+-	// ================================================================
+-	// 0023 亚子（礼服）：碎甲 / 暴击（第二份已在上方）
+-	// ================================================================
+-	// 碎甲：准备阶段，你可弃一张牌，使一名其它角色受到的下一次伤害+1
+-	yomi_ba_suijia: {
+-		trigger: { player: "phaseZhunbeiBegin" },
+-		filter(event, player) {
+-			return player.countCards("he") > 0 && game.hasPlayer(current => current !== player && current.isIn());
+-		},
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "碎甲：选择一名其它角色，令其受到的下一次伤害+1",
+-					filterTarget: lib.filter.notMe,
+-					selectTarget: 1,
+-					ai: aiEnemy(player),
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			const target = targets[0];
+-			const { bool } = await player
+-				.chooseToDiscard({ prompt: "碎甲：弃一张牌", position: "he", selectCard: 1 })
+-				.set("ai", card => 6 - get.value(card))
+-				.forResult();
+-			if (!bool) return;
+-			target.addSkill("yomi_ba_suijia_buff");
+-			game.log(player, "令", target, "受到的下一次伤害+1");
+-		},
+-		ai: {
+-			check(event, player) {
+-				return player.countCards("he") > 0 && game.hasPlayer(current => current !== player && current.isIn() && get.attitude(player, current) < 0);
+-			},
+-		},
+-	},
+-	yomi_ba_suijia_buff: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { player: "damageBegin3" },
+-		filter(event, player) {
+-			return event.num > 0;
+-		},
+-		async content(event, trigger, player) {
+-			trigger.num++;
+-			game.log(player, "因【碎甲】受到的伤害+1");
+-			player.removeSkill("yomi_ba_suijia_buff");
+-		},
+-	},
+-
+-	// ================================================================
+-	// 0024 优香：前排（工厂已在上方）/ 完盾 / 心算
+-	// ================================================================
+-	// 完盾：出牌阶段限一次，弃两张牌，获得两点护甲值
+-	yomi_ba_wandun: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 2,
+-		filter(event, player) {
+-			return player.countCards("he") >= 2;
+-		},
+-		prompt: "弃置两张牌，获得两点护甲值",
+-		async content(event, trigger, player) {
+-			await player.changeHujia(2);
+-		},
+-		ai: { order: 2, result: { player: 1 } },
+-	},
+-	// 心算：每回合一次，你打出牌响应时，可以回复一点体力
+-	yomi_ba_xinsuan: {
+-		usable: 1,
+-		trigger: { global: "respond" },
+-		filter(event, player) {
+-			return event.player === player && player.hp < player.maxHp;
+-		},
+-		async content(event, trigger, player) {
+-			await player.recover();
+-		},
+-		ai: {
+-			check(event, player) {
+-				return player.hp < player.maxHp;
+-			},
+-		},
+-	},
+-
+-	// ================================================================
+-	// 0025 优香（体操）：群盾 / 补水 / 捷径
+-	// ================================================================
+-	// 群盾：出牌阶段限一次，弃两张牌，至多两名角色直到你的下个回合开始时获得两点临时护甲，其依次可立即使用一张牌
+-	yomi_ba_qundun: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 2,
+-		filter(event, player) {
+-			return player.countCards("he") >= 2 && game.hasPlayer(current => current.isIn());
+-		},
+-		prompt: "弃置两张牌，至多两名角色直到你的下个回合开始时获得两点临时护甲，其依次可立即使用一张牌",
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "群盾：选择至多两名角色",
+-					filterTarget: (card, p, t) => t.isIn(),
+-					selectTarget: [1, 2],
+-					ai: aiAlly(player),
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			if (!player.storage.yomi_ba_qundun_list) player.storage.yomi_ba_qundun_list = [];
+-			for (const target of targets) {
+-				const key = `yomi_ba_qundun_${player.playerid}_${target.playerid}`;
+-				// expire 传 "none"：由本技能的载体在「你的下个回合开始时」统一清除（不是目标的回合）
+-				gainTempHujia(target, 2, "none", key);
+-				player.storage.yomi_ba_qundun_list.push({ player: target, key });
+-			}
+-			player.addSkill("yomi_ba_qundun_expire");
+-			for (const target of targets) {
+-				// 「不受出牌阶段次数限制」：addCount:false（用户 2026-10-06 确认）
+-				const next = target.chooseToUse("群盾：你可以立即使用一张牌（不计入出牌阶段次数）");
+-				next.set("addCount", false);
+-				await next.forResult();
+-			}
+-		},
+-		ai: { order: 2, result: { player: 1 } },
+-	},
+-	yomi_ba_qundun_expire: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { player: "phaseBegin", global: "dieAfter" },
+-		filter(event, player) {
+-			if (!(player.storage.yomi_ba_qundun_list || []).length) return false;
+-			if (event.triggername === "dieAfter") return event.player === player;
+-			return true;
+-		},
+-		async content(event, trigger, player) {
+-			for (const item of player.storage.yomi_ba_qundun_list || []) {
+-				if (item.player && item.player.isIn()) clearTempHujiaByKey(item.player, item.key);
+-			}
+-			delete player.storage.yomi_ba_qundun_list;
+-			player.removeSkill("yomi_ba_qundun_expire");
+-			game.log(player, "的【群盾】临时护甲已到期");
+-		},
+-	},
+-	// 补水（第一份）：锁定技，准备阶段，若你没有护甲值，获得一点护甲值；否则回复一点体力
+-	yomi_ba_bushui: {
+-		forced: true,
+-		locked: true,
+-		trigger: { player: "phaseZhunbeiBegin" },
+-		async content(event, trigger, player) {
+-			if (player.hujia <= 0) await player.changeHujia(1);
+-			else await player.recover();
+-		},
+-	},
+-	// 捷径：每回合一次，若你本回合未使用过非伤害牌，你使用伤害牌时，可使其具有伤害+1
+-	yomi_ba_jiejing: {
+-		usable: 1,
+-		trigger: { player: "useCard" },
+-		filter(event, player) {
+-			if (!isDamageCard(event.card)) return false;
+-			// 本回合未使用过非伤害牌（不含当前这张）
+-			return player.getHistory("useCard", evt => evt !== event && evt.card && !isDamageCard(evt.card)).length === 0;
+-		},
+-		async content(event, trigger, player) {
+-			// 标记挂在 useCard 事件上（不要写进牌对象的 storage：实体牌日后被再次使用会白拿 +1）
+-			trigger.yomi_ba_jiejing = true;
+-			player.addTempSkill("yomi_ba_jiejing_buff", { player: "phaseAfter" });
+-			game.log(player, "的【捷径】使此牌伤害+1");
+-		},
+-		ai: {
+-			check(event, player) {
+-				return isDamageCard(event.card);
+-			},
+-		},
+-	},
+-	yomi_ba_jiejing_buff: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { source: "damageBegin3" },
+-		filter(event, player) {
+-			return event.num > 0 && !!parentUseCard(event)?.yomi_ba_jiejing;
+-		},
+-		async content(event, trigger, player) {
+-			trigger.num++;
+-			game.log(player, "的【捷径】使伤害+1");
+-		},
+-	},
+-
+-	// ================================================================
+-	// 0026 优香（睡衣）：破甲（第三份）/ 补水（第二份）/ 懒觉
+-	// ================================================================
+-	// 破甲（第三份，效果不同）：你对一名其它角色造成伤害后，可弃一张牌，令其直到你下个回合开始
+-	//   将要受到伤害时判定，红色则 +1（火焰伤害判两次）
+-	yomi_ba_pojia3: {
+-		usable: 1,
+-		trigger: { source: "damageEnd" },
+-		filter(event, player) {
+-			if (!player.isPhaseUsing()) return false;
+-			if (event.num <= 0) return false;
+-			const target = event.player;
+-			return target && target !== player && target.isIn() && player.countCards("he") > 0 && !target.hasSkill("yomi_ba_pojia3_buff");
+-		},
+-		async content(event, trigger, player) {
+-			const target = trigger.player;
+-			const { bool } = await player
+-				.chooseToDiscard({
+-					prompt: "破甲：弃一张牌，令其受到伤害时判定，红色则伤害+1",
+-					position: "he",
+-					selectCard: 1,
+-				})
+-				.set("ai", card => 6 - get.value(card))
+-				.forResult();
+-			if (!bool) return;
+-			target.addSkill("yomi_ba_pojia3_buff");
+-			target.storage.yomi_ba_pojia3_caster = player;
+-			target.storage.yomi_ba_pojia3_end = player.phaseNumber + 1;
+-			game.log(player, "对", target, "发动了【破甲】");
+-		},
+-		ai: {
+-			check(event, player) {
+-				return get.attitude(player, event.player) < 0;
+-			},
+-		},
+-	},
+-	yomi_ba_pojia3_buff: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { player: "damageBegin3", global: ["phaseBegin", "dieAfter"] },
+-		filter(event, player) {
+-			const caster = player.storage.yomi_ba_pojia3_caster;
+-			if (!caster) return false;
+-			if (event.triggername === "phaseBegin") {
+-				return event.player === caster && caster.phaseNumber >= (player.storage.yomi_ba_pojia3_end ?? Infinity);
+-			}
+-			if (event.triggername === "dieAfter") {
+-				return event.player === caster || event.player === player;
+-			}
+-			return event.num > 0;
+-		},
+-		async content(event, trigger, player) {
+-			if (event.triggername !== "damageBegin3") {
+-				player.removeSkill("yomi_ba_pojia3_buff");
+-				delete player.storage.yomi_ba_pojia3_caster;
+-				delete player.storage.yomi_ba_pojia3_end;
+-				return;
+-			}
+-			const times = trigger.hasNature("fire") ? 2 : 1;
+-			let red = 0;
+-			for (let i = 0; i < times; i++) {
+-				const { bool } = await player.judge(card => (get.color(card) === "red" ? 1 : 0)).forResult();
+-				if (bool) red++;
+-			}
+-			if (red) {
+-				trigger.num += red;
+-				game.log(player, "因【破甲】受到的伤害+" + red);
+-			}
+-		},
+-	},
+-	// 补水（第二份，效果不同）：锁定技，准备阶段，你回复一点体力
+-	yomi_ba_bushui2: {
+-		forced: true,
+-		locked: true,
+-		trigger: { player: "phaseZhunbeiBegin" },
+-		async content(event, trigger, player) {
+-			await player.recover();
+-		},
+-	},
+-	// 懒觉：每回合一次，你本回合累计回复 ≥2 点体力时，可获得一点护甲值
+-	yomi_ba_lanjiao: {
+-		// ⚠️ 不能用 usable:1 —— 触发技的 usable 在「触发时」就自增，第一次回复（total=1）就把本回合机会吃掉，
+-		//    「累计≥2」永远等不到第二次（子代理复查 medium）→ 改为自管每回合一次
+-		trigger: { player: "recoverEnd" },
+-		filter(event, player) {
+-			return event.num > 0;
+-		},
+-		async content(event, trigger, player) {
+-			// 引擎 actionHistory 没有 recover 项 → 自己按「当前回合」累计（_status.currentPhase 变化即换回合）
+-			// 回合键用「当前行动角色 + 其回合号」：同一角色相邻两个回合 _status.currentPhase 是同一个对象（复查 medium）
+-			const cur = _status.currentPhase;
+-			const turnKey = cur ? `${cur.playerid}_${cur.phaseNumber}` : "none";
+-			const store = player.storage.yomi_ba_lanjiao_store;
+-			const total = trigger.num + (store && store.turn === turnKey ? store.num : 0);
+-			player.storage.yomi_ba_lanjiao_store = { turn: turnKey, num: total };
+-			if (total < 2) return;
+-			if (player.storage.yomi_ba_lanjiao_done === turnKey) return;
+-			player.storage.yomi_ba_lanjiao_done = turnKey;
+-			await player.changeHujia(1);
+-		},
+-		ai: {
+-			check(event, player) {
+-				return event.num > 0;
+-			},
+-		},
+-	},
+-
+-	// ================================================================
+-	// 0027 花子：支援（工厂已在上方）/ 大奶 / 硬硬
+-	// ================================================================
+-	// 大奶：出牌阶段限一次，弃三张牌，至多三名角色在你的本个与下个结束阶段回复一点体力
+-	yomi_ba_danai: {
+-		enable: "phaseUse",
+-		usable: 1,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 3,
+-		filter(event, player) {
+-			return player.countCards("he") >= 3 && !player.storage.yomi_ba_danai_active && game.hasPlayer(current => current.isIn());
+-		},
+-		prompt: "弃置三张牌，至多三名角色在你的本个与下个结束阶段回复一点体力",
+-		async content(event, trigger, player) {
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "大奶：选择至多三名角色",
+-					filterTarget: (card, p, t) => t.isIn(),
+-					selectTarget: [1, 3],
+-					ai: aiAlly(player),
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			player.storage.yomi_ba_danai_active = true;
+-			for (const t of targets) {
+-				t.addSkill("yomi_ba_danai_buff");
+-				t.storage.yomi_ba_danai_caster = player;
+-				t.storage.yomi_ba_danai_count = 2;
+-			}
+-			game.log(player, "对", targets, "发动了【大奶】");
+-		},
+-		ai: { order: 2, result: { player: 1 } },
+-	},
+-	yomi_ba_danai_buff: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { global: ["phaseJieshuBegin", "dieAfter"] },
+-		filter(event, player) {
+-			const caster = player.storage.yomi_ba_danai_caster;
+-			if (!caster) return false;
+-			if (event.triggername === "dieAfter") return event.player === caster || event.player === player;
+-			return caster.isIn() && event.player === caster && (player.storage.yomi_ba_danai_count || 0) > 0;
+-		},
+-		async content(event, trigger, player) {
+-			if (event.triggername === "dieAfter") {
+-				// 施法者或自己中途死亡 → 直接清干净（否则大奶会永久不可再发动）
+-				const caster = player.storage.yomi_ba_danai_caster;
+-				player.removeSkill("yomi_ba_danai_buff");
+-				delete player.storage.yomi_ba_danai_caster;
+-				delete player.storage.yomi_ba_danai_count;
+-				if (caster && caster.isIn() && !game.hasPlayer(current => current.hasSkill("yomi_ba_danai_buff"))) {
+-					delete caster.storage.yomi_ba_danai_active;
+-				}
+-				return;
+-			}
+-			await player.recover();
+-			player.storage.yomi_ba_danai_count--;
+-			if (player.storage.yomi_ba_danai_count <= 0) {
+-				const caster = player.storage.yomi_ba_danai_caster;
+-				player.removeSkill("yomi_ba_danai_buff");
+-				delete player.storage.yomi_ba_danai_caster;
+-				delete player.storage.yomi_ba_danai_count;
+-				// 最后一个目标收尾 → 解除「本效果持续期间不可再次发动」
+-				if (caster && caster.isIn() && !game.hasPlayer(current => current.hasSkill("yomi_ba_danai_buff"))) {
+-					delete caster.storage.yomi_ba_danai_active;
+-				}
+-			}
+-		},
+-	},
+-	// 硬硬：每轮限一次，任意角色回合开始时，令场上体力最低（或并列最低）的一名角色获得一点护甲值
+-	yomi_ba_yingying: {
+-		round: 1,
+-		trigger: { global: "phaseBegin" },
+-		filter(event, player) {
+-			return game.hasPlayer(current => current.isIn());
+-		},
+-		async content(event, trigger, player) {
+-			const min = Math.min(...game.filterPlayer(current => current.isIn()).map(current => current.hp));
+-			const { targets } = await player
+-				.chooseTarget({
+-					prompt: "硬硬：令一名当前体力最低的角色获得一点护甲值",
+-					filterTarget: (card, p, t) => t.isIn() && t.hp === min,
+-					selectTarget: 1,
+-					forced: true,
+-					ai(target) {
+-						if (target === player) return 2;
+-						return get.attitude(player, target) > 0 ? 1 : -1;
+-					},
+-				})
+-				.forResult();
+-			if (!targets || !targets.length) return;
+-			await targets[0].changeHujia(1);
+-		},
+-		ai: {
+-			check(event, player) {
+-				return game.hasPlayer(current => current.isIn());
+-			},
+-		},
+-	},
+-
+-	// ================================================================
+-	// 0028 花子（泳装）：玩水 / 漏水 / 出水 / 喷水
+-	// ================================================================
+-	// 玩水：锁定技，你免疫火属性伤害，改为摸等量的牌
+-	//   【用户 2026-10-06 拍板·方案 A】挂在 **damageBegin4**（伤害结算的最后一步）：
+-	//     · 此时 event.num 已经是**所有加成/翻倍之后**的最终数值 —— 礼服日奈【周备】的翻倍
+-	//       （damageBegin3 翻倍 + damageBegin4 锁值）也会被计入 → 摸牌数＝最终数值，贴合卡面「等量的牌」。
+-	//     · 免疫依然成立：trigger.cancel() 会 finish 事件，而引擎 ArrayCompiler 用
+-	//       `while (!event.finished)` 执行剩余步骤（GameEvent/compilers/ArrayCompiler.ts:23）
+-	//       → 后面的「消耗护甲 / damage / changeHp」全部跳过，不扣血。
+-	//   （早先版本挂在 damageBegin2，能最早免疫但只能摸到翻倍前的数值。）
+-	yomi_ba_wanshui: {
+-		forced: true,
+-		locked: true,
+-		trigger: { player: "damageBegin4" },
+-		filter(event, player) {
+-			return event.hasNature("fire") && event.num > 0;
+-		},
+-		async content(event, trigger, player) {
+-			const num = trigger.num;
+-			trigger.cancel();
+-			game.log(player, "的【玩水】免疫了", get.cnNumber(num), "点火焰伤害");
+-			if (num > 0) await player.draw(num);
+-		},
+-	},
+-	// 漏水：每轮限一次，任意角色回合开始时，你可以视为使用一张【万箭齐发】
+-	yomi_ba_loushui: {
+-		round: 1,
+-		trigger: { global: "phaseBegin" },
+-		filter(event, player) {
+-			return game.hasPlayer(current => current !== player && current.isIn());
+-		},
+-		async content(event, trigger, player) {
+-			const targets = game.filterPlayer(current => current !== player && current.isIn());
+-			await player.useCard({ name: "wanjian" }, targets).set("addCount", false);
+-		},
+-		ai: {
+-			check(event, player) {
+-				return game.hasPlayer(current => current !== player && current.isIn() && get.attitude(player, current) < 0);
+-			},
+-		},
+-	},
+-	// 出水：锁定技，其它角色以多个角色为目标时你获得两个「水」（上限 10）；每持有五个，【万箭齐发】伤害+1
+-	yomi_ba_chushui: {
+-		forced: true,
+-		locked: true,
+-		trigger: { global: "useCard" },
+-		filter(event, player) {
+-			return event.player !== player && (event.targets || []).length > 1;
+-		},
+-		async content(event, trigger, player) {
+-			player.setMark("yomi_ba_shui", Math.min(10, player.countMark("yomi_ba_shui") + 2));
+-			game.log(player, "获得了两个「水」标记");
+-		},
+-		group: ["yomi_ba_chushui_dmg"],
+-	},
+-	yomi_ba_chushui_dmg: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-		trigger: { source: "damageBegin3" },
+-		filter(event, player) {
+-			return event.num > 0 && get.name(event.card) === "wanjian";
+-		},
+-		async content(event, trigger, player) {
+-			const add = Math.floor(player.countMark("yomi_ba_shui") / 5);
+-			if (!add) return;
+-			trigger.num += add;
+-			game.log(player, "的【出水】使【万箭齐发】伤害+" + add);
+-		},
+-	},
+-	// 喷水：出牌阶段限一次，可将一张牌当【万箭齐发】使用；之后可失去五个「水」令本回合本技能可额外发动一次
+-	yomi_ba_penshui: {
+-		enable: "phaseUse",
+-		usable: 2,
+-		position: "he",
+-		filterCard: true,
+-		selectCard: 1,
+-		filter(event, player) {
+-			if (player.countCards("he") < 1) return false;
+-			if (player.getStat("skill").yomi_ba_penshui >= 1 && !player.hasSkill("yomi_ba_penshui_extra")) return false;
+-			return true;
+-		},
+-		prompt: "将一张牌当作【万箭齐发】使用",
+-		async content(event, trigger, player) {
+-			const targets = game.filterPlayer(current => current !== player && current.isIn());
+-			await player.useCard({ name: "wanjian" }, targets).set("addCount", false);
+-			if (player.countMark("yomi_ba_shui") < 5) return;
+-			const { bool } = await player
+-				.chooseBool("喷水：是否失去五个「水」标记，令本回合本技能可额外发动一次？")
+-				.set("ai", () => true)
+-				.forResult();
+-			if (!bool) return;
+-			player.removeMark("yomi_ba_shui", 5);
+-			player.addTempSkill("yomi_ba_penshui_extra", { player: "phaseUseEnd" });
+-			game.log(player, "失去了五个「水」标记，【喷水】可额外发动一次");
+-		},
+-		ai: { order: 2, result: { player: 1 } },
+-	},
+-	yomi_ba_penshui_extra: {
+-		sub: true,
+-		charlotte: true,
+-		silent: true,
+-		forced: true,
+-		popup: false,
+-		nopop: true,
+-	},
+-};
+-
++/** 该次伤害是否来自「本回合使用的第一张牌」 */
++function isFirstCardDamage(event, player) {
++	const evt = parentUseCard(event);
++	return !!evt && player.getHistory("useCard").indexOf(evt) === 0;
++}
++
++/** 支援：锁定技，包括多名角色为目标的效果对你造成的伤害-1（同名同效果 ×3 → 工厂） */
++function makeZhiyuan(id) {
++	return {
++		[id]: {
++			forced: true,
++			locked: true,
++			trigger: { player: "damageBegin3" },
++			filter(event, player) {
++				if (event.num <= 0) return false;
++				const evt = nearestTargetsEvent(event);
++				return !!evt && evt.targets.length > 1 && evt.targets.includes(player);
++			},
++			async content(event, trigger, player) {
++				trigger.num--;
++				game.log(player, "因【支援】受到的伤害-1");
++			},
++		},
++	};
++}
++
++/** 共用：给某个技能做「锁定数值」的内部载体（先记后还原，本技能伤害不受其它效果影响） */
++function makeDamageLock(id, flag) {
++	return {
++		[`${id}_lock`]: {
++			sub: true,
++			charlotte: true,
++			silent: true,
++			forced: true,
++			popup: false,
++			nopop: true,
++			trigger: { source: ["damageBegin3", "damageBegin4"] },
++			filter(event, player) {
++				if (event.triggername === "damageBegin4") return typeof event[`${flag}_locked`] === "number";
++				return !!event[flag];
++			},
++			async content(event, trigger, player) {
++				if (event.triggername === "damageBegin4") {
++					trigger.num = trigger[`${flag}_locked`];
++					delete trigger[`${flag}_locked`];
++					return;
++				}
++				trigger[`${flag}_locked`] = trigger.num;
++			},
++		},
++	};
++}
++
++const skillsBatch02 = {
++	// ---------- 工厂：支援 ×3 / 前排 复用 ----------
++	...makeZhiyuan("yomi_ba_zhiyuan"),
++	...makeZhiyuan("yomi_ba_zhiyuan2"),
++	...makeZhiyuan("yomi_ba_zhiyuan3"),
++	...makeQianpai("yomi_ba_qianpai3"),
++	...makeDamageLock("yomi_ba_renu", "yomi_ba_renu"),
++
++	// ---------- 标记载体：光 / 水 ----------
++	yomi_ba_guang: {
++		sub: true,
++		mark: true,
++		intro: {
++			name: "光",
++			content: "mark",
++		},
++	},
++	yomi_ba_shui: {
++		sub: true,
++		mark: true,
++		intro: {
++			name: "水",
++			content: "mark",
++		},
++	},
++
++	// ================================================================
++	// 0017 爱丽丝（女仆）：充能 / 瞄准 / 光炮
++	// ================================================================
++	// 充能：锁定技，你使用【杀】后，直到你的下个回合结束，你造成的雷电伤害+1（不可叠加）
++	yomi_ba_chongneng: {
++		forced: true,
++		locked: true,
++		trigger: { player: "useCard" },
++		filter(event, player) {
++			return get.name(event.card) === "sha";
++		},
++		async content(event, trigger, player) {
++			// 跨回合窗口用回合号（坑 3）：end = 自己下个回合
++			player.storage.yomi_ba_chongneng_end = player.phaseNumber + 1;
++			game.log(player, "的【充能】生效：直到其下个回合结束，雷电伤害+1");
++		},
++		group: ["yomi_ba_chongneng_buff"],
++	},
++	yomi_ba_chongneng_buff: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { source: "damageBegin3", player: "phaseAfter" },
++		filter(event, player) {
++			const end = player.storage.yomi_ba_chongneng_end;
++			if (typeof end !== "number") return false;
++			if (event.triggername === "phaseAfter") return player.phaseNumber >= end;
++			return player.phaseNumber <= end && event.num > 0 && event.hasNature("thunder");
++		},
++		async content(event, trigger, player) {
++			if (event.triggername === "phaseAfter") {
++				delete player.storage.yomi_ba_chongneng_end;
++				return;
++			}
++			trigger.num++;
++			game.log(player, "的【充能】使雷电伤害+1");
++		},
++	},
++	// 瞄准：锁定技（南蛮/万箭只可一名目标 + 单目标伤害牌伤害+1）
++	yomi_ba_miaozhun: {
++		forced: true,
++		locked: true,
++		mod: {
++			selectTarget(card, player, range) {
++				const name = get.name(card);
++				// 只可选定一名其它角色：range[0] 也要改，否则南蛮/万箭可以 0 目标使用（复查 medium）
++				if (name === "nanman" || name === "wanjian") {
++					range[0] = 1;
++					range[1] = 1;
++				}
++			},
++		},
++		group: ["yomi_ba_miaozhun_dmg"],
++	},
++	yomi_ba_miaozhun_dmg: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { source: "damageBegin3" },
++		filter(event, player) {
++			return event.num > 0 && fromSingleTargetCard(event);
++		},
++		async content(event, trigger, player) {
++			trigger.num++;
++			game.log(player, "的【瞄准】使伤害+1");
++		},
++	},
++	// 光炮：出牌阶段限一次，弃两张牌 → 雷【杀】，需要两张【闪】响应
++	yomi_ba_guangpao: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 2,
++		filter(event, player) {
++			return player.countCards("he") >= 2 && game.hasPlayer(current => current !== player);
++		},
++		prompt: "弃置两张牌，视为对一名其它角色使用一张雷【杀】（此【杀】需要两张【闪】响应）",
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "光炮：选择目标",
++					filterTarget: lib.filter.notMe,
++					selectTarget: 1,
++					ai: aiEnemy(player),
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			// 标记「本次这张杀来自光炮」→ 由 yomi_ba_guangpao_watch 给它登记 shanRequired = 2
++			player.storage.yomi_ba_guangpao_active = true;
++			try {
++				await player.useCard({ name: "sha", nature: "thunder" }, targets[0]).set("addCount", false);
++			} finally {
++				delete player.storage.yomi_ba_guangpao_active;
++			}
++		},
++		ai: { order: 1, result: { player: 1 } },
++		group: ["yomi_ba_guangpao_watch"],
++	},
++	yomi_ba_guangpao_watch: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		// 本体【无双】的做法：在 useCardToPlayered 上给该目标登记 shanRequired
++		trigger: { player: "useCardToPlayered" },
++		filter(event, player) {
++			return !!player.storage.yomi_ba_guangpao_active && get.name(event.card) === "sha" && !(event.getParent()?.directHit || []).includes(event.target);
++		},
++		logTarget: "target",
++		async content(event, trigger, player) {
++			const id = trigger.target.playerid;
++			const map = trigger.getParent()?.customArgs;
++			if (id == null || !map) return;
++			if (!map[id]) map[id] = {};
++			map[id].shanRequired = 2;
++			game.log(trigger.target, "需要两张【闪】才能抵消此【杀】");
++		},
++	},
++
++	// ================================================================
++	// 0018 爱丽丝：充能 / 光炮
++	// ================================================================
++	// 充能（第二份，效果不同）：每轮开始时，摸一张牌，获得一个「光」（上限 2）
++	yomi_ba_chongneng2: {
++		forced: true,
++		locked: true,
++		trigger: { global: "roundStart" },
++		filter(event, player) {
++			return player.isIn();
++		},
++		async content(event, trigger, player) {
++			await player.draw(1);
++			player.setMark("yomi_ba_guang", Math.min(2, player.countMark("yomi_ba_guang") + 1));
++			game.log(player, "获得了「光」标记");
++		},
++	},
++	// 光炮（第二份，效果不同）：弃三张牌 → 连续相邻的任意名其它角色各 1 点雷电伤害，消耗所有「光」每点 +1
++	yomi_ba_guangpao2: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 3,
++		filter(event, player) {
++			return player.countCards("he") >= 3 && game.hasPlayer(current => current !== player);
++		},
++		prompt: "弃置三张牌，对连续相邻的任意名其它角色各造成1点雷电伤害；消耗所有「光」，每消耗一个此伤害+1",
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "光炮：选择连续相邻的任意名其它角色（中间不得断开；已死亡的角色自动略过）",
++					filterTarget(card, p, target) {
++						if (target === p || !target.isIn()) return false;
++						const selected = ui.selected.targets || [];
++						if (!selected.length) return true;
++						// 连续：必须与已选角色的某一端相邻（getNext/getPrevious 会自动跳过死亡角色）
++						// ★ 本体同款：【间计】dcjianji（xianding/skill.js:36144）/【硝引】dcxiaoyin（30769）用的就是这个形状
++						return selected.some(t => t.getNext() === target || t.getPrevious() === target);
++					},
++					selectTarget: [1, Infinity],
++					ai: aiEnemy(player),
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			const num = player.countMark("yomi_ba_guang");
++			if (num > 0) {
++				player.removeMark("yomi_ba_guang", num);
++				game.log(player, "消耗了", get.cnNumber(num), "个「光」标记");
++			}
++			for (const target of targets) await target.damage(1 + num, player, "thunder");
++		},
++		ai: { order: 1, result: { player: 1 } },
++	},
++
++	// ================================================================
++	// 0019 爱丽丝（临战）：解放 / 换弹 / 光剑 / 新星
++	// ================================================================
++	// 解放：锁定技，你造成的所有伤害视为技能伤害，你的技能伤害+1
++	yomi_ba_jiefang: {
++		forced: true,
++		locked: true,
++		trigger: { source: ["damageBegin1", "damageBegin2"] },
++		filter(event, player) {
++			return true;
++		},
++		async content(event, trigger, player) {
++			if (event.triggername === "damageBegin1") {
++				// ① 视为技能伤害：清掉**牌来源 card**（护甲/藤甲等按「牌造成的伤害」判定的效果不再适用）
++				//    注意只删 card、保留 cards —— 寒冰剑/麒麟弓等武器效果会读 cards，删了会静默失效（复查 low）
++				if (trigger.card) {
++					delete trigger.card;
++					game.log(player, "的【解放】使此伤害视为技能伤害");
++				}
++				return;
++			}
++			// ② 你的技能伤害+1（此时所有伤害都已视为技能伤害）
++			//    damageSkill() 已经替 0 点伤害 +1 过（0 点会被引擎 filterStop 直接 finish）→ 跳过
++			if (trigger.yomi_ba_jiefang_pre) {
++				delete trigger.yomi_ba_jiefang_pre;
++				return;
++			}
++			if (!trigger.card && trigger.num >= 0) {
++				trigger.num++;
++				game.log(player, "的【解放】使技能伤害+1");
++			}
++		},
++	},
++	// 换弹（第二份，效果不同）：使用【杀】并结算后，展示手牌，无【杀】则对该目标造成 0 点伤害并摸一张牌
++	yomi_ba_huandan2: {
++		trigger: { player: "useCardAfter" },
++		filter(event, player) {
++			if (get.name(event.card) !== "sha") return false;
++			const targets = (event.targets || []).filter(t => t.isIn());
++			return targets.length > 0;
++		},
++		async content(event, trigger, player) {
++			const targets = (trigger.targets || []).filter(t => t.isIn());
++			await player.showCards(player.getCards("h"), "【换弹】：展示手牌");
++			if (player.countCards("h", { name: "sha" })) return;
++			await player.draw(1);
++			// 0 点伤害也要真的结算（临战爱丽丝的【解放】会把它变成 1 点）
++			for (const target of targets) await damageSkill(target, 0, player);
++		},
++		ai: {
++			// 手里没有【杀】才发动（避免泄露手牌）
++			check(event, player) {
++				return !player.countCards("h", { name: "sha" });
++			},
++		},
++	},
++	// 光剑：出牌阶段限两次，弃两张牌，获得一个「光」（上限 2）
++	yomi_ba_guangjian: {
++		enable: "phaseUse",
++		usable: 2,
++		position: "he",
++		filterCard: true,
++		selectCard: 2,
++		filter(event, player) {
++			return player.countCards("he") >= 2 && !player.hasSkill("yomi_ba_guangjian_ban");
++		},
++		prompt: "弃置两张牌，获得一个「光」标记（上限为两个）",
++		async content(event, trigger, player) {
++			player.setMark("yomi_ba_guang", Math.min(2, player.countMark("yomi_ba_guang") + 1));
++			game.log(player, "获得了「光」标记");
++		},
++		ai: { order: 2, result: { player: 1 } },
++	},
++	yomi_ba_guangjian_ban: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++	},
++	// 新星：弃两张牌 → 无限制雷【杀】，消耗所有「光」；每消耗一个独立乘区 +1、需要一张闪抵消一倍
++	yomi_ba_xinxing: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 2,
++		filter(event, player) {
++			return player.countCards("he") >= 2 && game.hasPlayer(current => current !== player);
++		},
++		prompt: "弃置两张牌，视为对一名其它角色使用一张无限制的雷【杀】；消耗所有「光」，每消耗一个伤害增加一倍、并需要一张【闪】抵消一倍",
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "新星：选择目标",
++					filterTarget: lib.filter.notMe,
++					selectTarget: 1,
++					ai: aiEnemy(player),
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			const target = targets[0];
++			const num = player.countMark("yomi_ba_guang");
++			if (num > 0) {
++				player.removeMark("yomi_ba_guang", num);
++				game.log(player, "消耗了", get.cnNumber(num), "个「光」标记");
++			}
++			// 发动后本阶段不可再发动「光剑」
++			player.addTempSkill("yomi_ba_guangjian_ban", { player: "phaseUseEnd" });
++			player.storage.yomi_ba_xinxing_ctx = { n: num };
++			try {
++				await player.useCard({ name: "sha", nature: "thunder" }, target).set("addCount", false);
++			} finally {
++				delete player.storage.yomi_ba_xinxing_ctx;
++			}
++			if (num >= 2) {
++				const cand = [target, target.getPrevious(), target.getNext()].filter(i => i && i.isIn() && i !== player);
++				if (cand.length) {
++					const choose = await player
++						.chooseTarget({
++							prompt: "新星：你可以再对目标及其上家与下家中的任意名角色造成0点伤害",
++							filterTarget: (card, p, t) => cand.includes(t),
++							selectTarget: [1, cand.length],
++							ai: aiEnemy(player),
++						})
++						.forResult();
++					for (const t of choose.targets || []) await damageSkill(t, 0, player, "thunder");
++				}
++			}
++		},
++		mod: {
++			targetInRange(card, player, target) {
++				if (player.storage.yomi_ba_xinxing_ctx && get.name(card) === "sha") return true;
++			},
++		},
++		ai: { order: 3, result: { player: 1 } },
++		group: ["yomi_ba_xinxing_watch", "yomi_ba_xinxing_mul"],
++	},
++	yomi_ba_xinxing_watch: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { player: "useCardToPlayered" },
++		filter(event, player) {
++			const ctx = player.storage.yomi_ba_xinxing_ctx;
++			return !!ctx && ctx.n > 0 && get.name(event.card) === "sha" && !(event.getParent()?.directHit || []).includes(event.target);
++		},
++		logTarget: "target",
++		async content(event, trigger, player) {
++			const id = trigger.target.playerid;
++			const map = trigger.getParent()?.customArgs;
++			if (id == null || !map) return;
++			if (!map[id]) map[id] = {};
++			// 乘区 = 1 + n ⇒ 完全抵消需要 n+1 张【闪】（每张闪使乘区 -1）
++			map[id].shanRequired = player.storage.yomi_ba_xinxing_ctx.n + 1;
++			game.log(trigger.target, "需要", get.cnNumber(map[id].shanRequired), "张【闪】才能完全抵消此【杀】");
++		},
++	},
++	yomi_ba_xinxing_mul: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { source: ["damageBegin3", "damageBegin4"] },
++		filter(event, player) {
++			if (event.triggername === "damageBegin4") return typeof event.yomi_ba_xinxing_locked === "number";
++			const ctx = player.storage.yomi_ba_xinxing_ctx;
++			// ⚠️ 不能用 event.card 判断：同角色【解放】已在 damageBegin1 把牌来源清掉
++			return !!ctx && ctx.n > 0 && !!shanRequiredEvent(event);
++		},
++		async content(event, trigger, player) {
++			if (event.triggername === "damageBegin4") {
++				trigger.num = trigger.yomi_ba_xinxing_locked;
++				delete trigger.yomi_ba_xinxing_locked;
++				return;
++			}
++			const ctx = player.storage.yomi_ba_xinxing_ctx;
++			const evt = shanRequiredEvent(trigger);
++			if (!ctx || !evt) return;
++			// 独立乘区 = 剩余所需【闪】数（初始 n+1，每张闪 -1；减到 0 时整张杀被抵消，不会走到这里）
++			const mul = Math.max(0, evt.shanRequired);
++			if (mul <= 1) return;
++			trigger.num *= mul;
++			trigger.yomi_ba_xinxing_locked = trigger.num;
++			game.log(player, "的【新星】独立乘区 ×" + mul);
++		},
++	},
++
++	// ================================================================
++	// 0020 凯伊：支援 / 增幅 / 并肩 / 惹怒
++	// ================================================================
++	// 增幅：弃一张牌，至多两名角色直到你的下个出牌阶段开始时，雷电伤害+1 且每回合首张牌伤害+1
++	yomi_ba_zengfu: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 1,
++		filter(event, player) {
++			return player.countCards("he") >= 1 && game.hasPlayer(current => current.isIn());
++		},
++		prompt: "弃置一张牌，选择至多两名角色：直到你的下个出牌阶段开始时，其雷电伤害+1、每回合使用的第一张牌伤害+1",
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "增幅：选择至多两名角色",
++					filterTarget: (card, p, t) => t.isIn(),
++					selectTarget: [1, 2],
++					ai: aiAlly(player),
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			player.storage.yomi_ba_zengfu_targets = targets.slice();
++			player.storage.yomi_ba_zengfu_end = player.phaseNumber + 1;
++			for (const t of targets) {
++				t.addSkill("yomi_ba_zengfu_buff");
++				t.storage.yomi_ba_zengfu_caster = player;
++			}
++			player.addSkill("yomi_ba_zengfu_expire");
++			game.log(player, "对", targets, "发动了【增幅】");
++		},
++		ai: { order: 2, result: { player: 1 } },
++	},
++	yomi_ba_zengfu_buff: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { source: "damageBegin3" },
++		filter(event, player) {
++			const caster = player.storage.yomi_ba_zengfu_caster;
++			if (!caster || !caster.isIn() || event.num <= 0) return false;
++			return event.hasNature("thunder") || isFirstCardDamage(event, player);
++		},
++		async content(event, trigger, player) {
++			let n = 0;
++			if (trigger.hasNature("thunder")) n++;
++			if (isFirstCardDamage(trigger, player)) n++;
++			if (!n) return;
++			trigger.num += n;
++			game.log(player, "的【增幅】使伤害+" + n);
++		},
++	},
++	yomi_ba_zengfu_expire: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		// ⚠️ 跳过出牌阶段时 phaseUseBegin 不触发（坑 6）→ 加 phaseAfter 兜底
++		trigger: { player: ["phaseUseBegin", "phaseAfter"] },
++		filter(event, player) {
++			const end = player.storage.yomi_ba_zengfu_end;
++			return typeof end === "number" && player.phaseNumber >= end;
++		},
++		async content(event, trigger, player) {
++			for (const t of player.storage.yomi_ba_zengfu_targets || []) {
++				if (t.isIn()) {
++					t.removeSkill("yomi_ba_zengfu_buff");
++					delete t.storage.yomi_ba_zengfu_caster;
++				}
++			}
++			delete player.storage.yomi_ba_zengfu_targets;
++			delete player.storage.yomi_ba_zengfu_end;
++			player.removeSkill("yomi_ba_zengfu_expire");
++			game.log(player, "的【增幅】已结束");
++		},
++	},
++	// 并肩：锁定技，发动「增幅」后，累积这几名角色造成伤害的 1/5（上限 5）
++	yomi_ba_bingjian: {
++		forced: true,
++		locked: true,
++		trigger: { global: "damageEnd" },
++		filter(event, player) {
++			const list = player.storage.yomi_ba_zengfu_targets;
++			const end = player.storage.yomi_ba_zengfu_end;
++			if (!list || !list.length || typeof end !== "number") return false;
++			if (player.phaseNumber > end) return false;
++			return event.num > 0 && list.includes(event.source);
++		},
++		async content(event, trigger, player) {
++			const now = Math.min(5, (player.storage.yomi_ba_bingjian || 0) + trigger.num / 5);
++			player.storage.yomi_ba_bingjian = now;
++			game.log(player, "的【并肩】累积至", Math.round(now * 100) / 100);
++		},
++	},
++	// 惹怒：锁定技，「增幅」结束后，选择一名累积角色以外的角色，对其造成 (1+X) 点雷电伤害（数值锁定）
++	yomi_ba_renu: {
++		forced: true,
++		locked: true,
++		trigger: { player: ["phaseUseBegin", "phaseAfter"] },
++		filter(event, player) {
++			const end = player.storage.yomi_ba_zengfu_end;
++			return typeof end === "number" && player.phaseNumber >= end;
++		},
++		async content(event, trigger, player) {
++			const list = player.storage.yomi_ba_zengfu_targets || [];
++			const x = Math.floor(player.storage.yomi_ba_bingjian || 0);
++			// ⚠️ 只清「并肩」累积值：targets / end 交给 yomi_ba_zengfu_expire 清
++			//   （两者同触发同 filter，若这里把 end 删了，expire 会被 arrangeTrigger 重新求值丢掉 → 增幅 buff 永不过期）
++			delete player.storage.yomi_ba_bingjian;
++			if (!game.hasPlayer(t => t.isIn() && !list.includes(t))) {
++				// 没有合法目标：不弹强制空框，直接结束（expire 会照常清窗口）
++				game.log(player, "的【惹怒】没有合法目标");
++				return;
++			}
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "惹怒：选择一名累积角色以外的角色，对其造成" + (1 + x) + "点雷电伤害",
++					filterTarget: (card, p, t) => t.isIn() && !list.includes(t),
++					selectTarget: 1,
++					forced: true,
++					ai: aiEnemy(player),
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			const evt = targets[0].damage(1 + x, player, "thunder");
++			evt.set("yomi_ba_renu", true);
++			await evt;
++		},
++		group: ["yomi_ba_renu_lock"],
++	},
++
++	// ================================================================
++	// 0021 星野（临战）：切换
++	// ================================================================
++	// 切换：游戏开始前，选择装备防御武装或攻击武装（技能组 + 体力上限/体力值随之调整）
++	yomi_ba_qiehuan: {
++		forced: true,
++		locked: true,
++		trigger: { global: ["gameStart"], player: ["enterGame", "phaseBegin"] },
++		filter(event, player) {
++			return !player.storage.yomi_ba_qiehuan_done;
++		},
++		async content(event, trigger, player) {
++			if (player.storage.yomi_ba_qiehuan_done) return;
++			player.storage.yomi_ba_qiehuan_done = true;
++			const { control } = await player
++				.chooseControl("防御武装", "攻击武装")
++				.set("prompt", "切换：选择要装备的武装")
++				.set("ai", () => (player.hp <= 3 ? "防御武装" : "攻击武装"))
++				.forResult();
++			const isDef = control === "防御武装";
++			const skills = isDef
++				? ["yomi_ba_qianpai", "yomi_ba_yanti", "yomi_ba_huban", "yomi_ba_jiangfang"]
++				: ["yomi_ba_yuanshe", "yomi_ba_sushe", "yomi_ba_yashe", "yomi_ba_jishe"];
++			await player.addSkills(skills);
++			// 体力上限/体力值：走**引擎 API**（本体【若愚】ruoyu / 【珍宝】yui_takaramono 同款：
++			//   `gainMaxHp + recover`；减少时 `loseMaxHp + loseHp`）——比手改 maxHp/hp 更稳（日志/刷新/体力上限事件都对）。
++			//   仍按「差值」而非直接赋值 → 主公/地主等已有加成原样保留（用户 2026-10-06 指定）。
++			const delta = (isDef ? 5 : 3) - 4;
++			if (delta > 0) {
++				await player.gainMaxHp(delta);
++				await player.recover(delta);
++			} else if (delta < 0) {
++				await player.loseMaxHp(-delta);
++				if (player.hp > player.maxHp) await player.loseHp(player.hp - player.maxHp);
++			}
++			game.log(player, "的【切换】装备了", isDef ? "防御武装" : "攻击武装");
++			// 防御武装的【前排】必须能立刻选人（不能等到自己第一个回合）
++			if (isDef && !player.storage.yomi_ba_qianpai_chosen) {
++				const skill = lib.skill.yomi_ba_qianpai;
++				if (skill && typeof skill.content === "function") {
++					await skill.content({ triggername: "切换" }, {}, player);
++				}
++			}
++		},
++	},
++
++	// ================================================================
++	// 0022 亚子：支援 / 治愈 / 暴击
++	// ================================================================
++	// 治愈：每轮结束时，你可选择一名角色，为其回复一点体力
++	yomi_ba_zhiyu: {
++		trigger: { global: "roundEnd" },
++		filter(event, player) {
++			return game.hasPlayer(current => current.isIn() && current.hp < current.maxHp);
++		},
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "治愈：选择一名角色，为其回复一点体力",
++					filterTarget: (card, p, t) => t.isIn() && t.hp < t.maxHp,
++					selectTarget: 1,
++					ai(target) {
++						if (target === player) return 2;
++						return get.attitude(player, target) >= 0 ? 1 + (target.maxHp - target.hp) * 0.1 : -1;
++					},
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			await targets[0].recover();
++		},
++		ai: {
++			check(event, player) {
++				return game.hasPlayer(current => current.isIn() && current.hp < current.maxHp && (current === player || get.attitude(player, current) > 0));
++			},
++		},
++	},
++	// 暴击（第一份）：每轮限一次，一名角色回合开始时弃一张牌，其本回合内判定黑色则伤害翻倍
++	yomi_ba_baoji: {
++		round: 1,
++		trigger: { global: "phaseBegin" },
++		filter(event, player) {
++			return event.player.isIn() && player.countCards("he") > 0;
++		},
++		async content(event, trigger, player) {
++			const target = trigger.player;
++			const { bool } = await player
++				.chooseToDiscard({
++					prompt: "暴击：弃一张牌，令其本回合造成伤害时判定，黑色则翻倍",
++					position: "he",
++					selectCard: 1,
++				})
++				.set("ai", card => 6 - get.value(card))
++				.forResult();
++			if (!bool) return;
++			target.storage.yomi_ba_baoji_caster = player;
++			// ⚠️ 不能先 addSkill 再 addTempSkill：引擎 addTempSkill 见「已有该技能且 tempSkills 未登记」会直接早退
++			//    → 过期时间永远写不进去 → buff 永不过期（子代理复查 high）
++			target.addTempSkill("yomi_ba_baoji_buff", { player: "phaseAfter" });
++			game.log(player, "对", target, "发动了【暴击】");
++		},
++		ai: {
++			check(event, player) {
++				// 只给「本回合可能造成伤害」的自己人或自己
++				const target = event.player;
++				return (target === player || get.attitude(player, target) > 0) && player.countCards("he") > 0;
++			},
++		},
++	},
++	yomi_ba_baoji_buff: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { source: "damageBegin3" },
++		filter(event, player) {
++			const caster = player.storage.yomi_ba_baoji_caster;
++			return !!caster && caster.isIn() && event.num > 0;
++		},
++		async content(event, trigger, player) {
++			const { bool } = await player.judge(card => (get.color(card) === "black" ? 1 : 0)).forResult();
++			if (!bool) return;
++			trigger.num *= 2;
++			game.log(player, "的【暴击】判定为黑色，伤害翻倍");
++		},
++	},
++	// 暴击（第二份，效果不同）：出牌阶段限一次，弃三张牌，至多四名角色直到你下个回合开始，黑桃则翻倍
++	yomi_ba_baoji2: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 3,
++		filter(event, player) {
++			return player.countCards("he") >= 3 && game.hasPlayer(current => current.isIn());
++		},
++		prompt: "弃置三张牌，令至多四名角色直到你的下个回合开始：造成伤害时判定，黑桃则翻倍",
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "暴击：选择至多四名角色",
++					filterTarget: (card, p, t) => t.isIn(),
++					selectTarget: [1, 4],
++					ai: aiAlly(player),
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			for (const t of targets) {
++				t.addSkill("yomi_ba_baoji2_buff");
++				t.storage.yomi_ba_baoji2_caster = player;
++				t.storage.yomi_ba_baoji2_end = player.phaseNumber + 1;
++			}
++			game.log(player, "对", targets, "发动了【暴击】");
++		},
++		ai: { order: 2, result: { player: 1 } },
++	},
++	yomi_ba_baoji2_buff: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { source: "damageBegin3", global: ["phaseBegin", "dieAfter"] },
++		filter(event, player) {
++			const caster = player.storage.yomi_ba_baoji2_caster;
++			if (!caster) return false;
++			if (event.triggername === "phaseBegin") {
++				return event.player === caster && caster.phaseNumber >= (player.storage.yomi_ba_baoji2_end ?? Infinity);
++			}
++			if (event.triggername === "dieAfter") {
++				return event.player === caster || event.player === player;
++			}
++			return event.num > 0;
++		},
++		async content(event, trigger, player) {
++			if (event.triggername !== "damageBegin3") {
++				player.removeSkill("yomi_ba_baoji2_buff");
++				delete player.storage.yomi_ba_baoji2_caster;
++				delete player.storage.yomi_ba_baoji2_end;
++				game.log(player, "的【暴击】效果已移除");
++				return;
++			}
++			const { bool } = await player.judge(card => (get.suit(card) === "spade" ? 1 : 0)).forResult();
++			if (!bool) return;
++			trigger.num *= 2;
++			game.log(player, "的【暴击】判定为黑桃，伤害翻倍");
++		},
++	},
++
++	// ================================================================
++	// 0023 亚子（礼服）：碎甲 / 暴击（第二份已在上方）
++	// ================================================================
++	// 碎甲：准备阶段，你可弃一张牌，使一名其它角色受到的下一次伤害+1
++	yomi_ba_suijia: {
++		trigger: { player: "phaseZhunbeiBegin" },
++		filter(event, player) {
++			return player.countCards("he") > 0 && game.hasPlayer(current => current !== player && current.isIn());
++		},
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "碎甲：选择一名其它角色，令其受到的下一次伤害+1",
++					filterTarget: lib.filter.notMe,
++					selectTarget: 1,
++					ai: aiEnemy(player),
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			const target = targets[0];
++			const { bool } = await player
++				.chooseToDiscard({ prompt: "碎甲：弃一张牌", position: "he", selectCard: 1 })
++				.set("ai", card => 6 - get.value(card))
++				.forResult();
++			if (!bool) return;
++			target.addSkill("yomi_ba_suijia_buff");
++			game.log(player, "令", target, "受到的下一次伤害+1");
++		},
++		ai: {
++			check(event, player) {
++				return player.countCards("he") > 0 && game.hasPlayer(current => current !== player && current.isIn() && get.attitude(player, current) < 0);
++			},
++		},
++	},
++	yomi_ba_suijia_buff: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { player: "damageBegin3" },
++		filter(event, player) {
++			return event.num > 0;
++		},
++		async content(event, trigger, player) {
++			trigger.num++;
++			game.log(player, "因【碎甲】受到的伤害+1");
++			player.removeSkill("yomi_ba_suijia_buff");
++		},
++	},
++
++	// ================================================================
++	// 0024 优香：前排（工厂已在上方）/ 完盾 / 心算
++	// ================================================================
++	// 完盾：出牌阶段限一次，弃两张牌，获得两点护甲值
++	yomi_ba_wandun: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 2,
++		filter(event, player) {
++			return player.countCards("he") >= 2;
++		},
++		prompt: "弃置两张牌，获得两点护甲值",
++		async content(event, trigger, player) {
++			await player.changeHujia(2);
++		},
++		ai: { order: 2, result: { player: 1 } },
++	},
++	// 心算：每回合一次，你打出牌响应时，可以回复一点体力
++	yomi_ba_xinsuan: {
++		usable: 1,
++		// ★ 本体同款：【奔战】shizuru_benzhan（key/skill.js:7744）＝ `global: respond` + filter 判断响应者
++		trigger: { global: "respond" },
++		filter(event, player) {
++			return event.player === player && player.hp < player.maxHp;
++		},
++		async content(event, trigger, player) {
++			await player.recover();
++		},
++		ai: {
++			check(event, player) {
++				return player.hp < player.maxHp;
++			},
++		},
++	},
++
++	// ================================================================
++	// 0025 优香（体操）：群盾 / 补水 / 捷径
++	// ================================================================
++	// 群盾：出牌阶段限一次，弃两张牌，至多两名角色直到你的下个回合开始时获得两点临时护甲，其依次可立即使用一张牌
++	yomi_ba_qundun: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 2,
++		filter(event, player) {
++			return player.countCards("he") >= 2 && game.hasPlayer(current => current.isIn());
++		},
++		prompt: "弃置两张牌，至多两名角色直到你的下个回合开始时获得两点临时护甲，其依次可立即使用一张牌",
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "群盾：选择至多两名角色",
++					filterTarget: (card, p, t) => t.isIn(),
++					selectTarget: [1, 2],
++					ai: aiAlly(player),
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			if (!player.storage.yomi_ba_qundun_list) player.storage.yomi_ba_qundun_list = [];
++			for (const target of targets) {
++				const key = `yomi_ba_qundun_${player.playerid}_${target.playerid}`;
++				// expire 传 "none"：由本技能的载体在「你的下个回合开始时」统一清除（不是目标的回合）
++				gainTempHujia(target, 2, "none", key);
++				player.storage.yomi_ba_qundun_list.push({ player: target, key });
++			}
++			player.addSkill("yomi_ba_qundun_expire");
++			for (const target of targets) {
++				// 「不受出牌阶段次数限制」：addCount:false（用户 2026-10-06 确认）
++				const next = target.chooseToUse("群盾：你可以立即使用一张牌（不计入出牌阶段次数）");
++				next.set("addCount", false);
++				await next.forResult();
++			}
++		},
++		ai: { order: 2, result: { player: 1 } },
++	},
++	yomi_ba_qundun_expire: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { player: "phaseBegin", global: "dieAfter" },
++		filter(event, player) {
++			if (!(player.storage.yomi_ba_qundun_list || []).length) return false;
++			if (event.triggername === "dieAfter") return event.player === player;
++			return true;
++		},
++		async content(event, trigger, player) {
++			for (const item of player.storage.yomi_ba_qundun_list || []) {
++				if (item.player && item.player.isIn()) clearTempHujiaByKey(item.player, item.key);
++			}
++			delete player.storage.yomi_ba_qundun_list;
++			player.removeSkill("yomi_ba_qundun_expire");
++			game.log(player, "的【群盾】临时护甲已到期");
++		},
++	},
++	// 补水（第一份）：锁定技，准备阶段，若你没有护甲值，获得一点护甲值；否则回复一点体力
++	yomi_ba_bushui: {
++		forced: true,
++		locked: true,
++		trigger: { player: "phaseZhunbeiBegin" },
++		async content(event, trigger, player) {
++			if (player.hujia <= 0) await player.changeHujia(1);
++			else await player.recover();
++		},
++	},
++	// 捷径：每回合一次，若你本回合未使用过非伤害牌，你使用伤害牌时，可使其具有伤害+1
++	yomi_ba_jiejing: {
++		usable: 1,
++		trigger: { player: "useCard" },
++		filter(event, player) {
++			if (!isDamageCard(event.card)) return false;
++			// 本回合未使用过非伤害牌（不含当前这张）
++			return player.getHistory("useCard", evt => evt !== event && evt.card && !isDamageCard(evt.card)).length === 0;
++		},
++		async content(event, trigger, player) {
++			// 标记挂在 useCard 事件上（不要写进牌对象的 storage：实体牌日后被再次使用会白拿 +1）
++			trigger.yomi_ba_jiejing = true;
++			player.addTempSkill("yomi_ba_jiejing_buff", { player: "phaseAfter" });
++			game.log(player, "的【捷径】使此牌伤害+1");
++		},
++		ai: {
++			check(event, player) {
++				return isDamageCard(event.card);
++			},
++		},
++	},
++	yomi_ba_jiejing_buff: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { source: "damageBegin3" },
++		filter(event, player) {
++			return event.num > 0 && !!parentUseCard(event)?.yomi_ba_jiejing;
++		},
++		async content(event, trigger, player) {
++			trigger.num++;
++			game.log(player, "的【捷径】使伤害+1");
++		},
++	},
++
++	// ================================================================
++	// 0026 优香（睡衣）：破甲（第三份）/ 补水（第二份）/ 懒觉
++	// ================================================================
++	// 破甲（第三份，效果不同）：你对一名其它角色造成伤害后，可弃一张牌，令其直到你下个回合开始
++	//   将要受到伤害时判定，红色则 +1（火焰伤害判两次）
++	yomi_ba_pojia3: {
++		usable: 1,
++		trigger: { source: "damageEnd" },
++		filter(event, player) {
++			if (!player.isPhaseUsing()) return false;
++			if (event.num <= 0) return false;
++			const target = event.player;
++			return target && target !== player && target.isIn() && player.countCards("he") > 0 && !target.hasSkill("yomi_ba_pojia3_buff");
++		},
++		async content(event, trigger, player) {
++			const target = trigger.player;
++			const { bool } = await player
++				.chooseToDiscard({
++					prompt: "破甲：弃一张牌，令其受到伤害时判定，红色则伤害+1",
++					position: "he",
++					selectCard: 1,
++				})
++				.set("ai", card => 6 - get.value(card))
++				.forResult();
++			if (!bool) return;
++			target.addSkill("yomi_ba_pojia3_buff");
++			target.storage.yomi_ba_pojia3_caster = player;
++			target.storage.yomi_ba_pojia3_end = player.phaseNumber + 1;
++			game.log(player, "对", target, "发动了【破甲】");
++		},
++		ai: {
++			check(event, player) {
++				return get.attitude(player, event.player) < 0;
++			},
++		},
++	},
++	yomi_ba_pojia3_buff: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { player: "damageBegin3", global: ["phaseBegin", "dieAfter"] },
++		filter(event, player) {
++			const caster = player.storage.yomi_ba_pojia3_caster;
++			if (!caster) return false;
++			if (event.triggername === "phaseBegin") {
++				return event.player === caster && caster.phaseNumber >= (player.storage.yomi_ba_pojia3_end ?? Infinity);
++			}
++			if (event.triggername === "dieAfter") {
++				return event.player === caster || event.player === player;
++			}
++			return event.num > 0;
++		},
++		async content(event, trigger, player) {
++			if (event.triggername !== "damageBegin3") {
++				player.removeSkill("yomi_ba_pojia3_buff");
++				delete player.storage.yomi_ba_pojia3_caster;
++				delete player.storage.yomi_ba_pojia3_end;
++				return;
++			}
++			// ★ 本体同款：【孤影】shiroha_guying（key/skill.js:6095-6135）＝ damageBegin3 + judge + num±
++			const times = trigger.hasNature("fire") ? 2 : 1;
++			let red = 0;
++			for (let i = 0; i < times; i++) {
++				const { bool } = await player.judge(card => (get.color(card) === "red" ? 1 : 0)).forResult();
++				if (bool) red++;
++			}
++			if (red) {
++				trigger.num += red;
++				game.log(player, "因【破甲】受到的伤害+" + red);
++			}
++		},
++	},
++	// 补水（第二份，效果不同）：锁定技，准备阶段，你回复一点体力
++	yomi_ba_bushui2: {
++		forced: true,
++		locked: true,
++		trigger: { player: "phaseZhunbeiBegin" },
++		async content(event, trigger, player) {
++			await player.recover();
++		},
++	},
++	// 懒觉：每回合一次，你本回合累计回复 ≥2 点体力时，可获得一点护甲值
++	yomi_ba_lanjiao: {
++		// ⚠️ 不能用 usable:1 —— 触发技的 usable 在「触发时」就自增，第一次回复（total=1）就把本回合机会吃掉，
++		//    「累计≥2」永远等不到第二次（子代理复查 medium）→ 改为自管每回合一次
++		trigger: { player: "recoverEnd" },
++		filter(event, player) {
++			return event.num > 0;
++		},
++		async content(event, trigger, player) {
++			// 引擎 actionHistory 没有 recover 项 → 自己按「当前回合」累计（_status.currentPhase 变化即换回合）
++			// 回合键用「当前行动角色 + 其回合号」：同一角色相邻两个回合 _status.currentPhase 是同一个对象（复查 medium）
++			const cur = _status.currentPhase;
++			const turnKey = cur ? `${cur.playerid}_${cur.phaseNumber}` : "none";
++			const store = player.storage.yomi_ba_lanjiao_store;
++			const total = trigger.num + (store && store.turn === turnKey ? store.num : 0);
++			player.storage.yomi_ba_lanjiao_store = { turn: turnKey, num: total };
++			if (total < 2) return;
++			if (player.storage.yomi_ba_lanjiao_done === turnKey) return;
++			player.storage.yomi_ba_lanjiao_done = turnKey;
++			await player.changeHujia(1);
++		},
++		ai: {
++			check(event, player) {
++				return event.num > 0;
++			},
++		},
++	},
++
++	// ================================================================
++	// 0027 花子：支援（工厂已在上方）/ 大奶 / 硬硬
++	// ================================================================
++	// 大奶：出牌阶段限一次，弃三张牌，至多三名角色在你的本个与下个结束阶段回复一点体力
++	yomi_ba_danai: {
++		enable: "phaseUse",
++		usable: 1,
++		position: "he",
++		filterCard: true,
++		selectCard: 3,
++		filter(event, player) {
++			return player.countCards("he") >= 3 && !player.storage.yomi_ba_danai_active && game.hasPlayer(current => current.isIn());
++		},
++		prompt: "弃置三张牌，至多三名角色在你的本个与下个结束阶段回复一点体力",
++		async content(event, trigger, player) {
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "大奶：选择至多三名角色",
++					filterTarget: (card, p, t) => t.isIn(),
++					selectTarget: [1, 3],
++					ai: aiAlly(player),
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			player.storage.yomi_ba_danai_active = true;
++			for (const t of targets) {
++				t.addSkill("yomi_ba_danai_buff");
++				t.storage.yomi_ba_danai_caster = player;
++				t.storage.yomi_ba_danai_count = 2;
++			}
++			game.log(player, "对", targets, "发动了【大奶】");
++		},
++		ai: { order: 2, result: { player: 1 } },
++	},
++	yomi_ba_danai_buff: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { global: ["phaseJieshuBegin", "dieAfter"] },
++		filter(event, player) {
++			const caster = player.storage.yomi_ba_danai_caster;
++			if (!caster) return false;
++			if (event.triggername === "dieAfter") return event.player === caster || event.player === player;
++			return caster.isIn() && event.player === caster && (player.storage.yomi_ba_danai_count || 0) > 0;
++		},
++		async content(event, trigger, player) {
++			if (event.triggername === "dieAfter") {
++				// 施法者或自己中途死亡 → 直接清干净（否则大奶会永久不可再发动）
++				const caster = player.storage.yomi_ba_danai_caster;
++				player.removeSkill("yomi_ba_danai_buff");
++				delete player.storage.yomi_ba_danai_caster;
++				delete player.storage.yomi_ba_danai_count;
++				if (caster && caster.isIn() && !game.hasPlayer(current => current.hasSkill("yomi_ba_danai_buff"))) {
++					delete caster.storage.yomi_ba_danai_active;
++				}
++				return;
++			}
++			await player.recover();
++			player.storage.yomi_ba_danai_count--;
++			if (player.storage.yomi_ba_danai_count <= 0) {
++				const caster = player.storage.yomi_ba_danai_caster;
++				player.removeSkill("yomi_ba_danai_buff");
++				delete player.storage.yomi_ba_danai_caster;
++				delete player.storage.yomi_ba_danai_count;
++				// 最后一个目标收尾 → 解除「本效果持续期间不可再次发动」
++				if (caster && caster.isIn() && !game.hasPlayer(current => current.hasSkill("yomi_ba_danai_buff"))) {
++					delete caster.storage.yomi_ba_danai_active;
++				}
++			}
++		},
++	},
++	// 硬硬：每轮限一次，任意角色回合开始时，令场上体力最低（或并列最低）的一名角色获得一点护甲值
++	yomi_ba_yingying: {
++		round: 1,
++		trigger: { global: "phaseBegin" },
++		filter(event, player) {
++			return game.hasPlayer(current => current.isIn());
++		},
++		async content(event, trigger, player) {
++			const min = Math.min(...game.filterPlayer(current => current.isIn()).map(current => current.hp));
++			const { targets } = await player
++				.chooseTarget({
++					prompt: "硬硬：令一名当前体力最低的角色获得一点护甲值",
++					filterTarget: (card, p, t) => t.isIn() && t.hp === min,
++					selectTarget: 1,
++					forced: true,
++					ai(target) {
++						if (target === player) return 2;
++						return get.attitude(player, target) > 0 ? 1 : -1;
++					},
++				})
++				.forResult();
++			if (!targets || !targets.length) return;
++			await targets[0].changeHujia(1);
++		},
++		ai: {
++			check(event, player) {
++				return game.hasPlayer(current => current.isIn());
++			},
++		},
++	},
++
++	// ================================================================
++	// 0028 花子（泳装）：玩水 / 漏水 / 出水 / 喷水
++	// ================================================================
++	// 玩水：锁定技，你免疫火属性伤害，改为摸等量的牌
++	//   【用户 2026-10-06 拍板·方案 A】挂在 **damageBegin4**（伤害结算的最后一步）：
++	//     · 此时 event.num 已经是**所有加成/翻倍之后**的最终数值 —— 礼服日奈【周备】的翻倍
++	//       （damageBegin3 翻倍 + damageBegin4 锁值）也会被计入 → 摸牌数＝最终数值，贴合卡面「等量的牌」。
++	//     · 免疫依然成立：trigger.cancel() 会 finish 事件，而引擎 ArrayCompiler 用
++	//       `while (!event.finished)` 执行剩余步骤（GameEvent/compilers/ArrayCompiler.ts:23）
++	//       → 后面的「消耗护甲 / damage / changeHp」全部跳过，不扣血。
++	//   （早先版本挂在 damageBegin2，能最早免疫但只能摸到翻倍前的数值。）
++	//   ★ 调研确认：本体【水泳】clbshuiyong（collab/skill.js:9797）同样是 damageBegin4 + cancel —— 本实现即本体稳定写法。
++	yomi_ba_wanshui: {
++		forced: true,
++		locked: true,
++		trigger: { player: "damageBegin4" },
++		filter(event, player) {
++			return event.hasNature("fire") && event.num > 0;
++		},
++		async content(event, trigger, player) {
++			const num = trigger.num;
++			trigger.cancel();
++			game.log(player, "的【玩水】免疫了", get.cnNumber(num), "点火焰伤害");
++			if (num > 0) await player.draw(num);
++		},
++	},
++	// 漏水：每轮限一次，任意角色回合开始时，你可以视为使用一张【万箭齐发】
++	yomi_ba_loushui: {
++		round: 1,
++		trigger: { global: "phaseBegin" },
++		filter(event, player) {
++			return game.hasPlayer(current => current !== player && current.isIn());
++		},
++		async content(event, trigger, player) {
++			// 本体【据峻】jujun 同款：交给引擎解析目标（会正确处理帷幕/前排等目标侧限制），不要手搓目标列表
++			await player.chooseUseTarget({ name: "wanjian", isCard: true }, true, "漏水：请选择【万箭齐发】的目标");
++		},
++		ai: {
++			check(event, player) {
++				return game.hasPlayer(current => current !== player && current.isIn() && get.attitude(player, current) < 0);
++			},
++		},
++	},
++	// 出水：锁定技，其它角色以多个角色为目标时你获得两个「水」（上限 10）；每持有五个，【万箭齐发】伤害+1
++	yomi_ba_chushui: {
++		forced: true,
++		locked: true,
++		trigger: { global: "useCard" },
++		filter(event, player) {
++			return event.player !== player && (event.targets || []).length > 1;
++		},
++		async content(event, trigger, player) {
++			player.setMark("yomi_ba_shui", Math.min(10, player.countMark("yomi_ba_shui") + 2));
++			game.log(player, "获得了两个「水」标记");
++		},
++		group: ["yomi_ba_chushui_dmg"],
++	},
++	yomi_ba_chushui_dmg: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++		trigger: { source: "damageBegin3" },
++		filter(event, player) {
++			return event.num > 0 && get.name(event.card) === "wanjian";
++		},
++		async content(event, trigger, player) {
++			const add = Math.floor(player.countMark("yomi_ba_shui") / 5);
++			if (!add) return;
++			trigger.num += add;
++			game.log(player, "的【出水】使【万箭齐发】伤害+" + add);
++		},
++	},
++	// 喷水：出牌阶段限一次，可将一张牌当【万箭齐发】使用；之后可失去五个「水」令本回合本技能可额外发动一次
++	yomi_ba_penshui: {
++		enable: "phaseUse",
++		usable: 2,
++		position: "he",
++		filterCard: true,
++		selectCard: 1,
++		filter(event, player) {
++			if (player.countCards("he") < 1) return false;
++			if (player.getStat("skill").yomi_ba_penshui >= 1 && !player.hasSkill("yomi_ba_penshui_extra")) return false;
++			return true;
++		},
++		prompt: "将一张牌当作【万箭齐发】使用",
++		async content(event, trigger, player) {
++			// 本体【据峻】jujun 同款：由引擎解析目标（正确处理帷幕/前排等目标侧限制）
++			await player.chooseUseTarget({ name: "wanjian", isCard: true }, true, "喷水：请选择【万箭齐发】的目标");
++			if (player.countMark("yomi_ba_shui") < 5) return;
++			const { bool } = await player
++				.chooseBool("喷水：是否失去五个「水」标记，令本回合本技能可额外发动一次？")
++				.set("ai", () => true)
++				.forResult();
++			if (!bool) return;
++			player.removeMark("yomi_ba_shui", 5);
++			player.addTempSkill("yomi_ba_penshui_extra", { player: "phaseUseEnd" });
++			game.log(player, "失去了五个「水」标记，【喷水】可额外发动一次");
++		},
++		ai: { order: 2, result: { player: 1 } },
++	},
++	yomi_ba_penshui_extra: {
++		sub: true,
++		charlotte: true,
++		silent: true,
++		forced: true,
++		popup: false,
++		nopop: true,
++	},
++};
++
+ Object.assign(skills, skillsBatch02);
+ 
+ // 批次 02 的语音尚未录入：先摘掉「前排3」继承自工厂的 audio 字段
+ // （否则 check_pack 会报「缺少 audio/skill/yomi_ba_qianpai31.ogg」；语音接入时再补回）
+-if (skills.yomi_ba_qianpai3) delete skills.yomi_ba_qianpai3.audio;
+-
++if (skills.yomi_ba_qianpai3) delete skills.yomi_ba_qianpai3.audio;
++
+ export default skills;
+\ No newline at end of file

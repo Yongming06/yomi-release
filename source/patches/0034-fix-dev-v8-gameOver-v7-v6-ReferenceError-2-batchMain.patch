@@ -1,0 +1,81 @@
+From 35df8c58ce0fa5aca40455952063d3082f94ede5 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 21:45:20 +0800
+Subject: [PATCH 34/37] =?UTF-8?q?fix(dev):=20=E8=87=AA=E5=8A=A8=E5=AF=B9?=
+ =?UTF-8?q?=E5=B1=80=20v8=E2=80=94=E2=80=94=E8=A1=A5=E5=9B=9E=20gameOver()?=
+ =?UTF-8?q?=20=E5=AE=9A=E4=B9=89=EF=BC=88v7=20=E5=BC=95=E7=94=A8=E4=BA=86?=
+ =?UTF-8?q?=E4=B8=80=E4=B8=AA=20v6=20=E5=88=A0=E6=8E=89=E7=9A=84=E5=87=BD?=
+ =?UTF-8?q?=E6=95=B0=EF=BC=8C=E5=AE=9E=E6=9C=BA=20ReferenceError=20?=
+ =?UTF-8?q?=E5=AF=BC=E8=87=B4=E7=AC=AC=202=20=E5=B1=80=E5=90=8E=E4=B8=AD?=
+ =?UTF-8?q?=E6=96=AD=EF=BC=89=EF=BC=9BbatchMain=20=E5=8A=A0=20try/catch=20?=
+ =?UTF-8?q?=E8=AE=A9=20harness=20=E8=87=AA=E8=BA=AB=E5=BC=82=E5=B8=B8?=
+ =?UTF-8?q?=E4=B9=9F=E8=90=BD=E7=9B=98=EF=BC=9B=E7=8E=AF=E5=A2=83=E8=A1=8C?=
+ =?UTF-8?q?=E6=89=93=E5=8D=B0=20characterPack=20=E7=9C=9F=E5=AE=9E?=
+ =?UTF-8?q?=E9=94=AE=E5=90=8D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/_yomi_devtools.js | 34 +++++++++++++++++++++++++++++++++-
+ 1 file changed, 33 insertions(+), 1 deletion(-)
+
+diff --git a/apps/core/_yomi_devtools.js b/apps/core/_yomi_devtools.js
+index 33e0df4..a1bb191 100644
+--- a/apps/core/_yomi_devtools.js
++++ b/apps/core/_yomi_devtools.js
+@@ -93,6 +93,16 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 			return -1;
+ 		}
+ 	};
++	// ⚠️ v6 重写时误删了这个函数、v7 又引用了它 → 实机 ReferenceError「gameOver is not defined」✗
++	const gameOver = () => {
++		try {
++			if (_status && _status.over) return true;
++			if (ui && ui.continue_game) return true;
++			return false;
++		} catch (e) {
++			return false;
++		}
++	};
+ 	const evtChain = () => {
+ 		try {
+ 			const out = [];
+@@ -328,6 +338,20 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 	};
+ 
+ 	async function batchMain(verbose) {
++		try {
++			return await batchMainInner(verbose);
++		} catch (e) {
++			// ⚠️ harness 自己的异常必须落盘：否则又是一次「静默不动」✗（2026-10-08 踩过）
++			const msg = (e && e.stack) || String(e);
++			try {
++				await appendText(REPORT, "  ❌ [harness 异常] " + msg + "\n" + window.__yomiSnapshot() + "\n");
++			} catch (e2) {}
++			console.error("[yomi 自动对局] harness 异常：", e);
++			running = false;
++			return null;
++		}
++	}
++	async function batchMainInner(verbose) {
+ 		if (running) return;
+ 		running = true;
+ 		const st = loadState();
+@@ -389,7 +413,15 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 		const st = { total: count, done: 0, t0: Date.now() };
+ 		saveState(st);
+ 		await appendText(REPORT, "\n===== AUTO MATCH START " + now() + " target " + count + " matches =====\n");
+-		await appendText(REPORT, "  [环境] url=" + location.href + " 引擎就绪=" + ready() + " 武将库=" + ourHeroes().length + " 含yomi的包=" + ourPackKeys().join(",") + "\n");
++		let packKeys = "?";
++		try {
++			packKeys = Object.keys(lib.characterPack || {}).join(",");
++		} catch (e) {}
++		await appendText(
++			REPORT,
++			"  [环境] url=" + location.href + " 引擎就绪=" + ready() + " 武将库=" + ourHeroes().length +
++				" 含yomi的包=" + ourPackKeys().join(",") + "\n  [环境] characterPack 全部键=" + packKeys + "\n",
++		);
+ 		return batchMain(opts.verbose !== false);
+ 	};
+ 

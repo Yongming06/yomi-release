@@ -1,0 +1,155 @@
+From e164043bf1e13c11ba0cd03674ae365a328c7ff3 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 21:57:07 +0800
+Subject: [PATCH 35/37] =?UTF-8?q?feat(dev):=20=E8=87=AA=E5=8A=A8=E5=AF=B9?=
+ =?UTF-8?q?=E5=B1=80=20v9=E2=80=94=E2=80=94=E6=8C=89=E5=B1=80=E5=BD=92?=
+ =?UTF-8?q?=E5=9B=A0=E6=8A=A5=E9=94=99=EF=BC=88=E6=AF=8F=E5=B1=80=E6=8A=8A?=
+ =?UTF-8?q?=E6=96=B0=E5=A2=9E=E6=8A=A5=E9=94=99=E5=8E=9F=E6=96=87=E6=91=98?=
+ =?UTF-8?q?=E8=BF=9B=E6=8A=A5=E5=91=8A=EF=BC=8C=E5=B9=B6=E6=A0=87=E6=B3=A8?=
+ =?UTF-8?q?=E6=9C=AC=E4=BD=93=E5=B7=B2=E7=9F=A5=E5=99=AA=E9=9F=B3=EF=BC=89?=
+ =?UTF-8?q?=EF=BC=9B20=20=E5=B1=80=E5=85=A8=E7=BB=BF=EF=BC=8C=E5=94=AF?=
+ =?UTF-8?q?=E4=B8=80=E6=8A=A5=E9=94=99=E7=A1=AE=E8=AE=A4=E6=98=AF=E6=9C=AC?=
+ =?UTF-8?q?=E4=BD=93=20DieAudio=20=E7=9A=84=E6=9D=8E=E5=85=B8=E7=9A=AE?=
+ =?UTF-8?q?=E8=82=A4=E5=90=8D=E5=99=AA=E9=9F=B3?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/_yomi_auto_report.txt | 79 +++++++++++++++++++++++++++++++++
+ apps/core/_yomi_devtools.js     | 11 +++++
+ apps/core/_yomi_errors.log      | 14 ++++++
+ 3 files changed, 104 insertions(+)
+
+diff --git a/apps/core/_yomi_auto_report.txt b/apps/core/_yomi_auto_report.txt
+index e69de29..c999fe7 100644
+--- a/apps/core/_yomi_auto_report.txt
++++ b/apps/core/_yomi_auto_report.txt
+@@ -0,0 +1,79 @@
++  [批次] total=20 done=2 本页 2026-10-08T13:46:07.680Z
++  [批次] 开局 mode=identity hero=(随机) 武将库=0
++  [批次] total=20 done=2 本页 2026-10-08T13:46:17.876Z
++  [进局] 存活=8 auto=true 事件=chooseButton:0<-chooseCharacter:0<-game:4<-?:?
++第 3/20 局：✅ over 用时 8s 新增报错行 0 存活 7 武将：吕布 / 日奈 / 巴巴托斯 / 花子 / 亚子（礼服） / 星野 / 梓
++  [下一局] 开局 mode=identity hero=梓 武将库=25
++  [批次] total=20 done=3 本页 2026-10-08T13:46:28.671Z
++  [进局] 存活=8 auto=true 事件=gain:4<-draw:0<-phaseDraw:2<-phase:9<-phaseLoop:0
++第 4/20 局：✅ over 用时 6s 新增报错行 0 存活 7 武将：梓 / 张辽 / 日奈（礼服） / 星野（临战） / 孙尚香 / 诸葛亮 / 巴巴托斯
++  [下一局] 开局 mode=identity hero=梓（泳装） 武将库=25
++  [批次] total=20 done=4 本页 2026-10-08T13:46:37.917Z
++  [进局] 存活=8 auto=true 事件=useCard:8<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
++第 5/20 局：✅ over 用时 2s 新增报错行 0 存活 7 武将：梓（泳装） / 司马懿 / 日奈（泳装） / 星野（泳装） / 关羽 / 甘宁 / 爱丽丝（临战）
++  [下一局] 开局 mode=identity hero=日奈（礼服） 武将库=25
++  [批次] total=20 done=5 本页 2026-10-08T13:46:44.033Z
++  [进局] 存活=8 auto=true 事件=phase:9<-phaseLoop:0<-game:7<-?:?
++第 6/20 局：✅ over 用时 30s 新增报错行 0 存活 3 武将：马超 / 曹操 / 标乐进
++  [下一局] 开局 mode=identity hero=日奈（泳装） 武将库=25
++  [批次] total=20 done=6 本页 2026-10-08T13:47:17.411Z
++  [进局] 存活=8 auto=true 事件=chooseBool:0<-trigger:0<-arrangeTrigger:0<-phase:7<-phaseLoop:0
++第 7/20 局：✅ over 用时 21s 新增报错行 0 存活 3 武将：孙权 / 星野（临战）攻击 / 梓（泳装）
++  [下一局] 开局 mode=identity hero=日奈 武将库=25
++  [批次] total=20 done=7 本页 2026-10-08T13:47:42.551Z
++  [进局] 存活=8 auto=true 事件=gain:4<-draw:0<-phaseDraw:2<-phase:9<-phaseLoop:0
++第 8/20 局：✅ over 用时 12s 新增报错行 0 存活 6 武将：日奈 / 优香（体操） / 优香 / 优香（睡衣） / 公孙瓒 / 孙尚香
++  [下一局] 开局 mode=identity hero=爱丽丝（女仆） 武将库=25
++  [批次] total=20 done=8 本页 2026-10-08T13:47:57.812Z
++  [进局] 存活=8 auto=true 事件=useCard:16<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
++第 9/20 局：✅ over 用时 9s 新增报错行 0 存活 6 武将：爱丽丝（女仆） / 张飞 / 赵云 / 星野 / 梓 / 诸葛亮
++  [下一局] 开局 mode=identity hero=爱丽丝 武将库=25
++  [批次] total=20 done=9 本页 2026-10-08T13:48:10.764Z
++  [进局] 存活=8 auto=true 事件=gain:4<-draw:0<-phaseDraw:2<-phase:9<-phaseLoop:0
++    · 心跳 30s 存活=5 auto=true over=false imchoosing=false 事件=useCard:8<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
++    · 心跳 60s 存活=2 auto=true over=false imchoosing=false 事件=useCard:8<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
++第 10/20 局：✅ over 用时 68s 新增报错行 14 存活 1 武将：星野（临战）防御
++  [下一局] 开局 mode=identity hero=爱丽丝（临战） 武将库=25
++  [批次] total=20 done=10 本页 2026-10-08T13:49:22.430Z
++  [进局] 存活=8 auto=true 事件=gain:4<-gainPlayerCard:4<-shunshou:0<-useCard:12<-chooseToUse:4
++第 11/20 局：✅ over 用时 29s 新增报错行 0 存活 7 武将：爱丽丝（临战） / 夏侯惇 / 巴巴托斯 / 张辽 / 司马懿 / 花子 / 亚子
++  [下一局] 开局 mode=identity hero=凯伊 武将库=25
++  [批次] total=20 done=11 本页 2026-10-08T13:49:54.227Z
++  [进局] 存活=8 auto=true 事件=useSkill:2<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
++第 12/20 局：✅ over 用时 18s 新增报错行 0 存活 7 武将：凯伊 / 雷电将军 / 花子 / 伊籍 / 诸葛亮 / 司马懿 / 星野（临战）
++  [下一局] 开局 mode=identity hero=优香 武将库=25
++  [批次] total=20 done=12 本页 2026-10-08T13:50:15.516Z
++  [进局] 存活=8 auto=true 事件=chooseTarget:0<-yomi_ba_qianpai3:0<-trigger:0<-arrangeTrigger:0<-game:5
++    · 心跳 30s 存活=6 auto=true over=false imchoosing=false 事件=judge:0<-phaseJudge:2<-phase:9<-phaseLoop:0<-game:7
++第 13/20 局：✅ over 用时 39s 新增报错行 0 存活 5 武将：优香 / 标甘夫人 / 诸葛亮 / 孙尚香 / 日奈（礼服）
++  [下一局] 开局 mode=identity hero=优香（体操） 武将库=25
++  [批次] total=20 done=13 本页 2026-10-08T13:50:58.370Z
++  [进局] 存活=8 auto=true 事件=gain:4<-draw:0<-wuzhong:0<-useCard:12<-chooseToUse:4
++    · 心跳 30s 存活=5 auto=true over=false imchoosing=false 事件=useCard:8<-chooseToUse:4<-phaseUse:3<-phase:9<-phaseLoop:0
++第 14/20 局：✅ over 用时 36s 新增报错行 0 存活 3 武将：孙权 / 优香 / 星野（临战）攻击
++  [下一局] 开局 mode=identity hero=优香（睡衣） 武将库=25
++  [批次] total=20 done=14 本页 2026-10-08T13:51:37.740Z
++  [进局] 存活=8 auto=true 事件=phase:9<-phaseLoop:0<-game:7<-?:?
++第 15/20 局：✅ over 用时 6s 新增报错行 0 存活 7 武将：优香（睡衣） / 马超 / 标乐进 / 爱丽丝（女仆） / 诸葛亮 / 亚子（礼服） / 公孙瓒
++  [下一局] 开局 mode=identity hero=星野（临战） 武将库=25
++  [批次] total=20 done=15 本页 2026-10-08T13:51:46.984Z
++  [进局] 存活=8 auto=true 事件=chooseControl:0<-yomi_ba_qiehuan:0<-trigger:0<-arrangeTrigger:0<-game:5
++第 16/20 局：✅ over 用时 21s 新增报错行 0 存活 3 武将：星野（临战） / 司马懿 / 曹操
++  [下一局] 开局 mode=identity hero=亚子 武将库=25
++  [批次] total=20 done=16 本页 2026-10-08T13:52:13.586Z
++  [进局] 存活=8 auto=true 事件=chooseBool:0<-trigger:0<-arrangeTrigger:0<-phase:7<-phaseLoop:0
++    · 心跳 30s 存活=4 auto=true over=false imchoosing=false 事件=showCards:0<-yomi_ba_sushe:0<-trigger:0<-arrangeTrigger:0<-useCard:18
++第 17/20 局：✅ over 用时 44s 新增报错行 0 存活 1 武将：星野（临战）
++  [下一局] 开局 mode=identity hero=亚子（礼服） 武将库=25
++  [批次] total=20 done=17 本页 2026-10-08T13:53:00.433Z
++  [进局] 存活=8 auto=true 事件=phase:9<-phaseLoop:0<-game:7<-?:?
++第 18/20 局：✅ over 用时 27s 新增报错行 0 存活 6 武将：亚子（礼服） / 赵云 / 公孙瓒 / 华雄 / 标甘夫人 / 吕布
++  [下一局] 开局 mode=identity hero=花子 武将库=25
++  [批次] total=20 done=18 本页 2026-10-08T13:53:30.741Z
++  [进局] 存活=8 auto=true 事件=chooseBool:0<-trigger:0<-arrangeTrigger:0<-phase:7<-phaseLoop:0
++第 19/20 局：✅ over 用时 27s 新增报错行 0 存活 3 武将：星野（临战）防御 / 公孙瓒 / 爱丽丝
++  [下一局] 开局 mode=identity hero=花子（泳装） 武将库=25
++  [批次] total=20 done=19 本页 2026-10-08T13:54:01.098Z
++  [进局] 存活=8 auto=true 事件=chooseBool:0<-trigger:0<-arrangeTrigger:0<-phase:7<-phaseLoop:0
++第 20/20 局：✅ over 用时 11s 新增报错行 0 存活 5 武将：花子（泳装） / 袁术 / 标乐进 / 甄宓 / 夏侯惇
++===== AUTO MATCH FINISHED 2026-10-08T13:54:14.726Z done 20/20 =====
+diff --git a/apps/core/_yomi_devtools.js b/apps/core/_yomi_devtools.js
+index a1bb191..807dbdd 100644
+--- a/apps/core/_yomi_devtools.js
++++ b/apps/core/_yomi_devtools.js
+@@ -57,6 +57,15 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 		} catch (e) {}
+ 	}
+ 	const errLines = async () => (await readText(ERRLOG)).split("\n").length;
++	/** 取错误日志从第 baseLine 行起的**新增原文**，并标注已知的上游噪音 */
++	async function newErrText(baseLine) {
++		const all = (await readText(ERRLOG)).split("\n");
++		const fresh = all.slice(Math.max(0, baseLine)).join("\n").trim();
++		if (!fresh) return "";
++		const known = ["when parsing die audio"]; // 本体：李典皮肤名 lidian 不是角色 → 音频回退默认，无影响
++		const tag = known.some(k => fresh.includes(k)) ? "（⚠️本体已知噪音，非我方问题）" : "（❗可能是我们的 bug）";
++		return tag + "\n" + fresh.split("\n").slice(0, 40).join("\n");
++	}
+ 
+ 	/* ---------- 批次状态（跨整页重载存活） ---------- */
+ 	const loadState = () => {
+@@ -321,6 +330,8 @@ import { lib, game, ui, get, ai, _status } from "noname";
+ 			" 用时 " + Math.round((Date.now() - mt) / 1000) + "s 新增报错行 " + Math.max(0, after - st.errBase) +
+ 			" 存活 " + aliveCount() + " 武将：" + heroes + "\n";
+ 		await appendText(REPORT, line);
++		const errText = await newErrText(st.errBase);
++		if (errText) await appendText(REPORT, "    └ 本局报错明细 " + errText + "\n");
+ 		if (verbose) console.log("[自动对局] " + line.trim());
+ 		st.done = idx;
+ 		delete st.errBase;
+diff --git a/apps/core/_yomi_errors.log b/apps/core/_yomi_errors.log
+index e69de29..5412b6d 100644
+--- a/apps/core/_yomi_errors.log
++++ b/apps/core/_yomi_errors.log
+@@ -0,0 +1,14 @@
++
++===== 2026-10-08T13:48:57.679Z =====
++【console.error】ReferenceError: Cannot find lidian when parsing die audio.
++    at useDefaultInfo (http://127.0.0.1:8081/noname/get/audio.ts:373:25)
++    at new DieAudio (http://127.0.0.1:8081/noname/get/audio.ts:380:9)
++    at DieAudio.getReferenceAudio (http://127.0.0.1:8081/noname/get/audio.ts:408:12)
++    at Audio.getReferenceAudio (http://127.0.0.1:8081/noname/get/audio.ts:114:31)
++    at Audio.parseAudio (http://127.0.0.1:8081/noname/get/audio.ts:192:19)
++    at http://127.0.0.1:8081/noname/get/audio.ts:143:14
++    at Array.forEach (<anonymous>)
++    at Audio.parseAudio (http://127.0.0.1:8081/noname/get/audio.ts:142:17)
++    at Audio.initAudioList (http://127.0.0.1:8081/noname/get/audio.ts:102:28)
++    at get audioList (http://127.0.0.1:8081/noname/get/audio.ts:80:10)
++当时事件链: (无 _status.event)

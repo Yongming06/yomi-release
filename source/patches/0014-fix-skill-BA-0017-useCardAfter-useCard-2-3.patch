@@ -1,0 +1,32 @@
+From 2941cf831e5e80b524691a55cef383d5197fb4a4 Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Wed, 7 Oct 2026 22:46:44 +0800
+Subject: [PATCH 14/37] =?UTF-8?q?fix(skill):=20BA=200017=E3=80=90=E5=85=85?=
+ =?UTF-8?q?=E8=83=BD=E3=80=91=E6=94=B9=E7=94=A8=20useCardAfter=EF=BC=88?=
+ =?UTF-8?q?=E5=8E=9F=20useCard=20=E4=BC=9A=E7=BB=99=E8=BF=99=E5=BC=A0?=
+ =?UTF-8?q?=E3=80=90=E6=9D=80=E3=80=91=E8=87=AA=E5=B7=B1=E4=B9=9F=E5=8A=A0?=
+ =?UTF-8?q?=E4=BC=A4=EF=BC=8C=E5=AE=9E=E6=B5=8B=202=20=E7=82=B9=E4=BC=A4?=
+ =?UTF-8?q?=E5=AE=B3=E6=89=93=E6=88=90=203=20=E7=82=B9=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/character/yomi_char_ba/skill.js | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/apps/core/character/yomi_char_ba/skill.js b/apps/core/character/yomi_char_ba/skill.js
+index a871936..b6ac19f 100644
+--- a/apps/core/character/yomi_char_ba/skill.js
++++ b/apps/core/character/yomi_char_ba/skill.js
+@@ -1730,7 +1730,9 @@ const skillsBatch02 = {
+ 	yomi_ba_chongneng: {
+ 		forced: true,
+ 		locked: true,
+-		trigger: { player: "useCard" },
++		// ⚠️ 必须是 useCardAfter（「使用【杀】**后**」）：用 useCard 会在【杀】结算过程中就生效，
++		// 导致这张杀自己造成的雷电伤害也被 +1（实测日志里 3 点应为 2 点）。本体「使用牌后」技能都用这个事件。
++		trigger: { player: "useCardAfter" },
+ 		filter(event, player) {
+ 			return get.name(event.card) === "sha";
+ 		},

@@ -1,0 +1,181 @@
+From cb035ca1221dc295c56a8c9be6018caede46d1de Mon Sep 17 00:00:00 2001
+From: yongming <15957439516@163.com>
+Date: Thu, 8 Oct 2026 13:20:44 +0800
+Subject: [PATCH 18/37] =?UTF-8?q?fix(skill):=20=E6=8C=89=E5=A4=8D=E6=9F=A5?=
+ =?UTF-8?q?=E7=BB=93=E8=AE=BA=E4=BF=AE=20filter=20=E8=A7=A6=E5=8F=91?=
+ =?UTF-8?q?=E5=90=8D=EF=BC=88=E7=AC=AC=E4=B8=89=E5=8F=82=EF=BC=89=E2=80=94?=
+ =?UTF-8?q?=E2=80=94=E4=BF=AE=E6=8E=89=20event.hasNature=20is=20not=20a=20?=
+ =?UTF-8?q?function=20=E7=AD=89=2011=20=E5=A4=84=E5=90=8C=E7=B1=BB?=
+ =?UTF-8?q?=E6=AD=BB=E5=88=86=E6=94=AF=EF=BC=88=E5=85=85=E8=83=BD/?=
+ =?UTF-8?q?=E7=A0=B4=E7=94=B2/=E6=9A=B4=E5=87=BB/=E5=A4=A7=E5=A5=B6/?=
+ =?UTF-8?q?=E7=BE=A4=E7=9B=BE/=E5=85=89=E5=88=83/makeDamageLock/=E6=96=B0?=
+ =?UTF-8?q?=E6=98=9F=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/core/card/yomi_pack_core.js          |  9 ++--
+ apps/core/character/yomi_char_ba/skill.js | 55 +++++++++++++++--------
+ 2 files changed, 42 insertions(+), 22 deletions(-)
+
+diff --git a/apps/core/card/yomi_pack_core.js b/apps/core/card/yomi_pack_core.js
+index e2c8138..01a6a9f 100644
+--- a/apps/core/card/yomi_pack_core.js
++++ b/apps/core/card/yomi_pack_core.js
+@@ -759,14 +759,17 @@ export default {
+ 			forced: true,
+ 			charlotte: true,
+ 			trigger: { source: "damageBegin1", global: "phaseBegin" },
+-			filter(event, player) {
+-				if (event.name === "phaseBegin") {
++			filter(event, player, triggername) {
++				// ★ 触发名取第三参（规范第 2 条）：phaseBegin 的源事件 name 是 "phase"，不是 "phaseBegin"
++				//   → 原来在 filter 里判 event.name === "phaseBegin" 恒假，「每回合重置」从未生效（复查 medium）。
++				if (triggername === "phaseBegin") {
+ 					return true;
+ 				}
+ 				return typeof event.hasNature === "function" && event.hasNature() && !player.storage.yomi_guangren_used;
+ 			},
+ 			async content(event, trigger, player) {
+-				if (trigger.name === "phaseBegin") {
++				// content 里两个判据都留着（event.triggername 有效；trigger.name === "phase" 是源事件名）
++				if (event.triggername === "phaseBegin" || trigger.name === "phase") {
+ 					// 每个回合开始时重置「本回合是否已用过」
+ 					delete player.storage.yomi_guangren_used;
+ 					return;
+diff --git a/apps/core/character/yomi_char_ba/skill.js b/apps/core/character/yomi_char_ba/skill.js
+index e84ccd4..1703a90 100644
+--- a/apps/core/character/yomi_char_ba/skill.js
++++ b/apps/core/character/yomi_char_ba/skill.js
+@@ -1690,8 +1690,8 @@ function makeDamageLock(id, flag) {
+ 			popup: false,
+ 			nopop: true,
+ 			trigger: { source: ["damageBegin3", "damageBegin4"] },
+-			filter(event, player) {
+-				if (event.triggername === "damageBegin4") return typeof event[`${flag}_locked`] === "number";
++			filter(event, player, triggername) {
++				if (triggername === "damageBegin4") return typeof event[`${flag}_locked`] === "number";
+ 				return !!event[flag];
+ 			},
+ 			async content(event, trigger, player) {
+@@ -1760,15 +1760,21 @@ const skillsBatch02 = {
+ 		popup: false,
+ 		nopop: true,
+ 		trigger: { source: "damageBegin3", player: "phaseAfter" },
+-		filter(event, player) {
++		filter(event, player, triggername) {
+ 			const end = player.storage.yomi_ba_chongneng_end;
+ 			if (typeof end !== "number") return false;
+-			if (event.triggername === "phaseAfter") return player.phaseNumber >= end;
++			// ★ 触发名必须取**第三参**（规范第 2 条）：filter 第一参是「源事件」——
++			//   phaseAfter 的源事件是 name="phase" 的阶段事件（没有 hasNature），
++			//   在 filter 里读 event.triggername 恒为 undefined → 会掉进伤害分支 →
++			//   `event.hasNature is not a function`（2026-10-08 实机报错，行号 1768）。
++			if (triggername === "phaseAfter") return player.phaseNumber >= end;
++			if (typeof event.hasNature !== "function") return player.phaseNumber >= end; // 兜底
+ 			// 传导伤害不重复加成（本项目自定义，见 isChainedDamage 注释）
+ 			return player.phaseNumber <= end && event.num > 0 && event.hasNature("thunder") && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+-			if (event.triggername === "phaseAfter") {
++			// content 里 event.triggername 是有效的（规范第 1 条）；再留一道「非伤害事件」兜底
++			if (event.triggername === "phaseAfter" || typeof trigger.hasNature !== "function") {
+ 				delete player.storage.yomi_ba_chongneng_end;
+ 				return;
+ 			}
+@@ -2098,8 +2104,8 @@ const skillsBatch02 = {
+ 		popup: false,
+ 		nopop: true,
+ 		trigger: { source: ["damageBegin3", "damageBegin4"] },
+-		filter(event, player) {
+-			if (event.triggername === "damageBegin4") return typeof event.yomi_ba_xinxing_locked === "number";
++		filter(event, player, triggername) {
++			if (triggername === "damageBegin4") return typeof event.yomi_ba_xinxing_locked === "number";
+ 			const ctx = player.storage.yomi_ba_xinxing_ctx;
+ 			// ⚠️ 不能用 event.card 判断：同角色【解放】已在 damageBegin1 把牌来源清掉
+ 			return !!ctx && ctx.n > 0 && !!shanRequiredEvent(event) && !isChainedDamage(event);
+@@ -2433,19 +2439,22 @@ const skillsBatch02 = {
+ 		popup: false,
+ 		nopop: true,
+ 		trigger: { source: "damageBegin3", global: ["phaseBegin", "dieAfter"] },
+-		filter(event, player) {
++		filter(event, player, triggername) {
+ 			const caster = player.storage.yomi_ba_baoji2_caster;
+ 			if (!caster) return false;
+-			if (event.triggername === "phaseBegin") {
++			// ★ 触发名取第三参（规范第 2 条），同【破甲3】：在 filter 里读 event.triggername 恒为 undefined
++			if (triggername === "phaseBegin") {
+ 				return event.player === caster && caster.phaseNumber >= (player.storage.yomi_ba_baoji2_end ?? Infinity);
+ 			}
+-			if (event.triggername === "dieAfter") {
++			if (triggername === "dieAfter") {
+ 				return event.player === caster || event.player === player;
+ 			}
++			if (typeof event.hasNature !== "function") return false; // 兜底
+ 			return event.num > 0 && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+-			if (event.triggername !== "damageBegin3") {
++			// content 里 event.triggername 有效；再加「非伤害事件」兜底（阶段/死亡 → 清理）
++			if (event.triggername !== "damageBegin3" || typeof trigger.hasNature !== "function") {
+ 				player.removeSkill("yomi_ba_baoji2_buff");
+ 				delete player.storage.yomi_ba_baoji2_caster;
+ 				delete player.storage.yomi_ba_baoji2_end;
+@@ -2597,9 +2606,10 @@ const skillsBatch02 = {
+ 		popup: false,
+ 		nopop: true,
+ 		trigger: { player: "phaseBegin", global: "dieAfter" },
+-		filter(event, player) {
++		filter(event, player, triggername) {
+ 			if (!(player.storage.yomi_ba_qundun_list || []).length) return false;
+-			if (event.triggername === "dieAfter") return event.player === player;
++			// ★ 触发名取第三参（规范第 2 条）：否则 dieAfter 判断恒假 → 任何角色阵亡都会清掉本人护甲
++			if (triggername === "dieAfter") return event.player === player;
+ 			return true;
+ 		},
+ 		async content(event, trigger, player) {
+@@ -2703,19 +2713,24 @@ const skillsBatch02 = {
+ 		popup: false,
+ 		nopop: true,
+ 		trigger: { player: "damageBegin3", global: ["phaseBegin", "dieAfter"] },
+-		filter(event, player) {
++		filter(event, player, triggername) {
+ 			const caster = player.storage.yomi_ba_pojia3_caster;
+ 			if (!caster) return false;
+-			if (event.triggername === "phaseBegin") {
++			// ★ 触发名取第三参（规范第 2 条）：filter 第一参是源事件（phaseBegin 的源事件是
++			//   name="phase" 的阶段事件、dieAfter 是死亡事件），读 event.triggername 恒为 undefined
++			//   → 会让「施法者下个回合开始才清理」这一支**永远不可达**（复查 high）。
++			if (triggername === "phaseBegin") {
+ 				return event.player === caster && caster.phaseNumber >= (player.storage.yomi_ba_pojia3_end ?? Infinity);
+ 			}
+-			if (event.triggername === "dieAfter") {
++			if (triggername === "dieAfter") {
+ 				return event.player === caster || event.player === player;
+ 			}
++			if (typeof event.hasNature !== "function") return false; // 兜底：非伤害事件不该走到这里
+ 			return event.num > 0 && !isChainedDamage(event);
+ 		},
+ 		async content(event, trigger, player) {
+-			if (event.triggername !== "damageBegin3") {
++			// content 里 event.triggername 有效；再加「非伤害事件」兜底（阶段/死亡 → 清理）
++			if (event.triggername !== "damageBegin3" || typeof trigger.hasNature !== "function") {
+ 				player.removeSkill("yomi_ba_pojia3_buff");
+ 				delete player.storage.yomi_ba_pojia3_caster;
+ 				delete player.storage.yomi_ba_pojia3_end;
+@@ -2813,10 +2828,12 @@ const skillsBatch02 = {
+ 		popup: false,
+ 		nopop: true,
+ 		trigger: { global: ["phaseJieshuBegin", "dieAfter"] },
+-		filter(event, player) {
++		filter(event, player, triggername) {
+ 			const caster = player.storage.yomi_ba_danai_caster;
+ 			if (!caster) return false;
+-			if (event.triggername === "dieAfter") return event.player === caster || event.player === player;
++			// ★ 触发名取第三参（规范第 2 条）：否则 dieAfter 这一支恒不可达 →
++			//   施法者/自己中途死亡时清理不掉，大奶会永久不可再发动（复查 high）。
++			if (triggername === "dieAfter") return event.player === caster || event.player === player;
+ 			return caster.isIn() && event.player === caster && (player.storage.yomi_ba_danai_count || 0) > 0;
+ 		},
+ 		async content(event, trigger, player) {
