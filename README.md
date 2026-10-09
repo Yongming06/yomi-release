@@ -1,3 +1,11 @@
+[![⬇ 一键下载完整版](https://img.shields.io/badge/%E2%AC%87_%E4%B8%80%E9%94%AE%E4%B8%8B%E8%BD%BD-%E5%AE%8C%E6%95%B4%E7%89%88-2ea44f?style=for-the-badge)](https://github.com/Yongming06/yomi-release/releases/latest/download/yomi-full-win64.zip)
+
+> 👆 **点上面这个绿色按钮 = 直接下载最新版完整包**（约 1.6 GB，免安装，解压双击 `YomiNoname.exe` 即玩）
+>
+> 也可以去 [Releases 页面](https://github.com/Yongming06/yomi-release/releases/latest) 自己挑（那里还有「更新包」等文件）
+
+---
+
 # 无名杀 · yomi 自制版
 
 > 本仓库用于**发布与更新**：同学在这里下载游戏、下载更新；源码改动以补丁形式附在 `source/`。
